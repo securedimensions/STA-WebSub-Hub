@@ -1,0 +1,89 @@
+services:
+  db:
+    image: postgres:14.2
+    restart: no
+    environment:
+      - "POSTGRES_HOST=db"
+      - "POSTGRES_PORT=5432"
+      - "POSTGRES_USER=websub"
+      - "POSTGRES_PASSWORD=changeme"
+      - "POSTGRES_DB=websub"
+    expose:
+      - "5432"
+    ports:
+      - "5432:5432"
+    volumes:
+      - ../docker/create.sql:/docker-entrypoint-initdb.d/create.sql
+      - postgres_data:/var/lib/postgresql/data/
+    healthcheck:
+      test: ["CMD-SHELL", "sh -c 'pg_isready -h db -p 5432 -U websub -d websub'"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+  broker:
+    image: eclipse-mosquitto
+    environment:
+      - MQTT_PORT=1883
+    expose:
+      - "1883"
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./config:/mosquitto/config:rw
+    restart: no
+  publisher:
+    build: 
+      context: ../test/publisher
+      dockerfile: Dockerfile
+    restart: no
+    environment:
+      - "PUBLISHER_PORT=8181"
+      - "PUBLISHER_LOG_LEVEL=DEBUG"
+      - "HUB_URL=http://localhost:4000/api/subscriptions"
+      - "STA_ROOT_URL=http://publisher"
+      - "STA_MQTT_URL=mqtt://broker:1883"
+    ports:
+      - "8181:8181"
+    depends_on:
+      broker:
+        condition: service_started
+  subscriber:
+    build: 
+      context: ../test/subscriber
+      dockerfile: Dockerfile
+    restart: no
+    environment:
+      - "SUBSCRIBER_PORT=8081"
+      - "SUBSCRIBER_LOG_LEVEL=DEBUG"
+    ports:
+      - "8081:8081"
+  hub:
+    build: 
+      context: ..
+      dockerfile: Dockerfile
+    restart: no
+    environment:
+      - "POSTGRES_HOST=db"
+      - "POSTGRES_PORT=5432"
+      - "POSTGRES_USER=websub"
+      - "POSTGRES_PASSWORD=changeme"
+      - "POSTGRES_DB=websub"
+      - "HUB_PORT=4000"
+      - "HUB_LOG_LEVEL=DEBUG"
+      - "HUB_URL=http://localhost:4000/api/subscriptions"
+      - "STA_ROOT_URL=http://publisher/"
+      - "STA_MQTT_URL=mqtt://broker:1883"
+      - "PUBLISHER_URL=http://publisher:8181"
+    ports:
+      - "4000:4000"
+    depends_on:
+      broker:
+        condition: service_started
+      publisher:
+        condition: service_started
+      subscriber:
+        condition: service_started
+      db:
+        condition: service_healthy
+volumes:
+  postgres_data:

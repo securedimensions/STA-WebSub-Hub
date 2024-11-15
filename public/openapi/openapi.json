@@ -1,0 +1,122 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "SensorThings API WebSub Hub",
+    "description": "This is the API of a SensorThings API - WebSub 1.0 compliant Hub.",
+    "contact": {
+      "email": "am@secure-dimensions.de"
+    },
+    "license": {
+      "name": "Apache 2.0",
+      "url": "http://www.apache.org/licenses/LICENSE-2.0.html"
+    },
+    "version": "1.0.3"
+  },
+  "externalDocs": {
+    "description": "Find out more about the SensorThings API WebSub Extension",
+    "url": "https://github.com/opengeospatial/sensorthings/tree/24-032"
+  },
+  "servers": [
+    {
+      "url": "/api/subscriptions"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Subscription Management",
+      "description": "API to subscribe and unsubscribe"
+    }
+  ],
+  "paths": {
+    "/": {
+      "post": {
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "tags": [
+          "Subscription"
+        ],
+        "summary": "Subscribe to a topic",
+        "description": "Use the URL from the Hub discovery `<link>; rel=\"self\"` for the `hub.topic` parameter.",
+        "operationId": "subscribe_unsubscribe",
+        "requestBody": {
+          "description": "Create or renew a subscription",
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Subscription"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Subscription accepted"
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "responses": {
+      "UnauthorizedError": {
+        "description": "Access token from AUTHENIX is missing or invalid"
+      }
+    },
+    "schemas": {
+      "Subscription": {
+        "required": [
+          "hub.mode",
+          "hub.topic",
+          "hub.callback"
+        ],
+        "type": "object",
+        "properties": {
+          "hub.mode": {
+            "type": "string",
+            "description": "REQUIRED. The literal string \"subscribe\"",
+            "enum": [
+              "subscribe",
+              "unsubscribe"
+            ]
+          },
+          "hub.topic": {
+            "type": "string",
+            "description": "REQUIRED. The topic URL that the subscriber wishes to subscribe to or unsubscribe from. Note that this MUST be the \"self\" URL found during the discovery step, which may be different from the URL that was used to make the discovery request.",
+            "example": "https://localhost/sta/v1.1/Observations"
+          },
+          "hub.callback": {
+            "type": "string",
+            "description": "REQUIRED. The subscriber's callback URL where content distribution notifications should be delivered. The callback URL SHOULD be an unguessable URL that is unique per subscription. ([capability-urls])",
+            "example": "http://webook/observations"
+          },
+          "hub.lease_seconds": {
+            "type": "integer",
+            "description": "OPTIONAL. Number of seconds for which the subscriber would like to have the subscription active, given as a positive decimal integer. Hubs MAY choose to respect this value or not, depending on their own policies, and MAY set a default value if the subscriber omits the parameter. This parameter MAY be present for unsubscription requests and MUST be ignored by the hub in that case.",
+            "example": 24600,
+            "default": 300
+          },
+          "hub.secret": {
+            "type": "string",
+            "description": "OPTIONAL. A subscriber-provided cryptographically random unique secret string that will be used to compute an HMAC digest for authorized content distribution. If not supplied, the HMAC digest will not be present for content distribution requests. This parameter SHOULD only be specified when the request was made over HTTPS [RFC2818]. This parameter MUST be less than 200 bytes in length.",
+            "default": ""
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    }
+  }
+}

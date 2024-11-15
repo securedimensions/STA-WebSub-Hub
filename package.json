@@ -1,0 +1,28 @@
+{
+  "name": "websub-hub",
+  "version": "0.3.0",
+  "private": true,
+  "scripts": {
+    "start": "node ./server.js",
+    "publisher": "nodemon ./test/helpers/publisher.js localhost 8180",
+    "subscriber": "nodemon ./test/helpers/subscriber.js localhost 8181",
+    "test": "mocha --exit --debug --timeout 10000 test"
+  },
+  "dependencies": {
+    "assert": "^2.1.0",
+    "braces": "^3.0.3",
+    "dotenv": "^16.4.5",
+    "expect": "^29.7.0",
+    "express": "^4.21.1",
+    "loglevel": "^1.9.2",
+    "mocha": "^10.7.3",
+    "mqtt": "^5.10.1",
+    "parse-http-header": "^1.0.1",
+    "pg": "^8.13.0",
+    "serve-favicon": "^2.5.0",
+    "urllib": "^4.4.0"
+  },
+  "devDependencies": {
+    "nodemon": "^1.12.1"
+  }
+}
