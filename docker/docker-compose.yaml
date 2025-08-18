@@ -21,13 +21,13 @@
 #SOFTWARE.
  
 services:
-  db:
+  sta-websub-hub-db:
     image: postgres:14.2
     restart: always
     env_file:
       - ./.env
-    ports:
-      - ${POSTGRES_PORT}:${POSTGRES_PORT}
+    expose:
+      - ${POSTGRES_PORT}
     volumes:
       - ./create.sql:/docker-entrypoint-initdb.d/create.sql
       - postgres_data:/var/lib/postgresql/data/
@@ -36,7 +36,7 @@ services:
       interval: 10s
       timeout: 3s
       retries: 3
-  hub:
+  sta-websub-hub:
     build: 
       context: ..
       dockerfile: Dockerfile
@@ -53,7 +53,7 @@ services:
     ports:
       - "$HUB_PORT:$HUB_PORT"
     depends_on:
-      db:
+      sta-websub-hub-db:
         condition: service_healthy
 volumes:
   postgres_data:

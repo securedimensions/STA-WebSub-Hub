@@ -36,7 +36,7 @@ const unsubscribe = require('./unsubscribe');
 const { config, log } = require('../settings');
 
 router.get('/subscriptions', function (request, response) {
-	return response.status(405).contentType('text').send('please use POST');
+	return response.redirect('/');
 });
 
 router.post('/subscriptions', async function (request, response, next) {

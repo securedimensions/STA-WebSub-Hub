@@ -68,7 +68,7 @@ mqtt_client.on('connect', async () => {
                 
             }).on('end', () => {
                 client.release();
-                log.info("Publisher ready!");
+                log.info("Hub ready!");
             }).on('error', (error) => {
                 log.error('init MQTT subscriptions error: ', error)
             });

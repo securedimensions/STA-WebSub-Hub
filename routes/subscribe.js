@@ -51,8 +51,9 @@ function parseLink(data) {
 let subscribe = async function (topic_url, topic, callback, lease_seconds = config.hub.default_lease_seconds, secret = null) {
 
     // Validate that subscription with Publisher is possible
-    const url = config.publisher.url + '/' + topic;
+    const url = config.publisher.url + topic;
     log.info('Starting validation of intent with publisher: ', url);
+    log.info('topic_url: ', topic_url.toString());
     const status = await request(url, { method: 'HEAD' })
         .then(async (res) => {
             // result: { data: Buffer, res: Response }
@@ -77,7 +78,8 @@ let subscribe = async function (topic_url, topic, callback, lease_seconds = conf
                 accepted = false;
             }
 
-            if (linkHeaders['self'] !== topic_url.toString()) {
+            //if (linkHeaders['self'] !== topic_url.toString()) {
+            if (querystring.unescape(linkHeaders['self']) !== querystring.unescape(topic_url.toString())) {
                 error_msg = 'publisher returned mismatching topic URL: ' + linkHeaders['self'];
                 accepted = false;
             }
@@ -115,10 +117,10 @@ let subscribe = async function (topic_url, topic, callback, lease_seconds = conf
 
     // validate intent of Subscriber
     const challenge = crypto.randomBytes(16).toString('hex');
-
+    log.debug("topic: ", topic_url);
     let params = {
         'hub.mode': 'subscribe',
-        'hub.topic': querystring.escape(topic_url),
+        'hub.topic': topic_url.toString(), //querystring.escape(topic_url),
         'hub.challenge': challenge,
         'hub.lease_seconds': lease_seconds
     };
@@ -126,6 +128,7 @@ let subscribe = async function (topic_url, topic, callback, lease_seconds = conf
     if (secret !== null) {
         params['hub.secret'] = secret;
     }
+    log.debug("params: ", params);
     request(callback, { method: 'GET', data: params })
         .then(async (res) => {
 
@@ -161,7 +164,7 @@ let subscribe = async function (topic_url, topic, callback, lease_seconds = conf
                             method: 'GET',
                             data: {
                                 'hub.mode': 'denied',
-                                'hub.topic': querystring.escape(topic_url),
+                                'hub.topic': topic_url.toString(), //querystring.escape(topic_url),
                                 'hub.reason': 'Publisher MQTT subscription error'
                             }
                         }

@@ -100,7 +100,7 @@
           },
           "hub.lease_seconds": {
             "type": "integer",
-            "description": "OPTIONAL. Number of seconds for which the subscriber would like to have the subscription active, given as a positive decimal integer. Hubs MAY choose to respect this value or not, depending on their own policies, and MAY set a default value if the subscriber omits the parameter. This parameter MAY be present for unsubscription requests and MUST be ignored by the hub in that case.",
+            "description": "OPTIONAL. Number of seconds for which the subscriber would like to have the subscription active, given as a positive decimal integer. Hubs MAY choose to respect this value or not, depending on their own policies, and MAY set a default value if the subscriber omits the parameter. This parameter MAY be present for unsubscription requests and MUST be ignored by the hub in that case. The default is 1800 seconds (30 minutes), the minimum is 60 seconds, and the maximum is 86400 seconds (1 day).",
             "example": 24600,
             "default": 300
           },

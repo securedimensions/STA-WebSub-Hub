@@ -43,7 +43,7 @@ let unsubscribe = async function (topic_url, topic, callback) {
             method: 'GET',
             data: {
                 'hub.mode': 'unsubscribe',
-                'hub.topic': querystring.escape(topic_url),
+                'hub.topic': topic_url.toString(), //querystring.escape(topic_url),
                 'hub.challenge': challenge
             }
         }
@@ -56,7 +56,7 @@ let unsubscribe = async function (topic_url, topic, callback) {
             log.error("subscriber returned wrong content-type for validation of intent: " + content_type);
             return;
         }
-        if (charset !== 'utf-8') {
+        if (charset.toLowerCase() !== 'utf-8') {
             log.error("subscriber returned wrong encoding for validation of intent: " + charset);
             return;
         }
