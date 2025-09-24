@@ -31,6 +31,7 @@ const http_publish = require('./helpers/http_publish');
 const {pool} = require('./helpers/db');
 const {Query} = require('pg');
 const assert = require("assert");
+const querystring = require('querystring');
 
 var server = null;
 
@@ -58,10 +59,11 @@ mqtt_client.on('connect', async () => {
             assert.equal(query, result);
 
             query.on('row', (row) => {
-                log.info('Subscribing to MQTT topic: ', row.topic);
+                const topic = querystring.unescape(row.topic);
+                log.info('Subscribing to MQTT topic: ', topic);
                 // Register subscription with Publisher
                 
-                mqtt_client.subscribe(row.topic, (err, granted) => {
+                mqtt_client.subscribe(topic, (err, granted) => {
                     if (err !== null) log.error(err);
                     if (granted !== null) log.debug(granted[0]);
                 });
