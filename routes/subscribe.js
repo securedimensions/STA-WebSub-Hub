@@ -196,7 +196,7 @@ let subscribe = async function (topic_url, topic, callback, lease_seconds = conf
             }
 
         }).catch(error => {
-            log.error(`validation if intent error for ${topic_url} -> ${callback}: ${error.code}`);
+            log.error(`validation of intent error for ${topic_url} -> ${callback}: ${error}`);
             if (typeof error.errors === 'array') {
                 error.errors.forEach(e => {
                     log.debug(e);
