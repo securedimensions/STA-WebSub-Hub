@@ -55,6 +55,30 @@ mqtt_client.on('connect', () => {
 
 });
 
+function publish_burst(topic, ratePerSecond, seconds) {
+    const total = Math.max(0, Math.floor(ratePerSecond * seconds));
+    const intervalMs = 1000;
+
+    let sent = 0;
+    let tick = 0;
+
+    log.info(`burst: topic=${topic} rate=${ratePerSecond}/s seconds=${seconds} total=${total}`);
+
+    const timer = setInterval(() => {
+        tick += 1;
+        const targetSent = Math.min(total, tick * ratePerSecond);
+        while (sent < targetSent) {
+            sent += 1;
+            mqtt_client.publish(topic, `{"topic": "${topic}", "sequence": ${sent}}`);
+        }
+
+        if (sent >= total) {
+            clearInterval(timer);
+            log.info(`burst finished: sent=${sent} topic=${topic}`);
+        }
+    }, intervalMs);
+}
+
 function publish_topic(topic) {
     log.info("start in 10 seconds with publishing every 10 seconds to topic: " + topic);
     // publish message on topic every 10 seconds
@@ -64,6 +88,22 @@ function publish_topic(topic) {
         mqtt_client.publish(topic, `{"topic": "${topic}", "sequence": ${now}}`);
     });
 }
+
+publisher.post('/burst/*', function (req, res) {
+    const topic = req.path.substring("/burst/".length);
+    const rate = parseInt(req.query.rate || "1000", 10);
+    const seconds = parseInt(req.query.seconds || "5", 10);
+
+    if (!Number.isFinite(rate) || rate <= 0 || rate > 100000) {
+        return res.status(400).send("invalid rate");
+    }
+    if (!Number.isFinite(seconds) || seconds <= 0 || seconds > 3600) {
+        return res.status(400).send("invalid seconds");
+    }
+
+    publish_burst(topic, rate, seconds);
+    return res.status(202).send(`burst accepted: topic=${topic} rate=${rate} seconds=${seconds}`);
+});
 
 publisher.head('*', function (req, res) {
     // start publishing to the topic

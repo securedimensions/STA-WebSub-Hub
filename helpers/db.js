@@ -47,6 +47,16 @@ const pool = new Pool({
     max: 20,
 });
 
+let loadAllSubscriptions = async function () {
+    const sql_query = `
+        SELECT t.topic, s.id, s.callback, s.secret, s.duration, s.status, s.topic_id
+        FROM subscriptions s
+        JOIN topics t ON t.id = s.topic_id
+        WHERE s.status != $1`;
+    const result = await pool.query(sql_query, [subscription_state.DISABLED]);
+    return result.rows;
+}
+
 let getTopics = async function () {
     let sql_query = `SELECT * from topics`;
 
@@ -59,9 +69,15 @@ let getTopics = async function () {
     return result.rows;
 }
 
+let clearAll = async function () {
+    // Test/maintenance helper: remove all topics and subscriptions
+    await pool.query('TRUNCATE TABLE subscriptions, topics RESTART IDENTITY CASCADE');
+}
+
 let numSubscriptions = async function (topic) {
     topic = querystring.escape(topic);
-    let sql_query = `SELECT count(*)::int from subscriptions WHERE topic_id = (SELECT id FROM topics WHERE topic = $1)`;
+    // topic is not enforced unique in the DB schema, so count across all matching topic rows
+    let sql_query = `SELECT count(*)::int from subscriptions WHERE topic_id IN (SELECT id FROM topics WHERE topic = $1)`;
     let sql_values = [topic];
 
     let result = await pool.query(sql_query, sql_values);
@@ -70,8 +86,12 @@ let numSubscriptions = async function (topic) {
 
 let getSubscriptions = async function (topic) {
     topic = querystring.escape(topic);
-    let sql_query = `SELECT * from view_subscriptions WHERE topic = $1`;
-    let sql_values = [topic];
+    const sql_query = `
+        SELECT s.id, s.callback, s.secret, s.duration, s.status, s.topic_id
+        FROM subscriptions s
+        JOIN topics t ON t.id = s.topic_id
+        WHERE t.topic = $1`;
+    const sql_values = [topic];
 
     const result = await pool.query(sql_query, sql_values);
     if (result.rowCount === 0) {
@@ -79,7 +99,7 @@ let getSubscriptions = async function (topic) {
         return [];
     }
 
-    return result.rows[0]['subscriptions'];
+    return result.rows;
 }
 
 let insertSubscription = async function (topic_url, topic, callback, lease_seconds, secret) {
@@ -88,30 +108,46 @@ let insertSubscription = async function (topic_url, topic, callback, lease_secon
     const client = await pool.connect()
 
     try {
+        await client.query('BEGIN')
 
-        let topic_id = null;
-
-        // let's see if the topic_url already exists
-        let result = await client.query('SELECT id from topics WHERE topic_url = ($1)', [topic_url]);
+        let result = await client.query('SELECT id from topics WHERE topic_url = $1', [topic_url]);
         if (result.rowCount === 0) {
-            // The topic does not exist => insert topic_url, topic
-            await client.query('BEGIN')
-            result = await client.query('INSERT INTO topics (topic_url, topic) VALUES($1, $2) RETURNING id', [topic_url, topic]);
-            await client.query('COMMIT')
+            try {
+                result = await client.query(
+                    'INSERT INTO topics (topic_url, topic) VALUES($1, $2) RETURNING id',
+                    [topic_url, topic]
+                );
+            } catch (e) {
+                if (e.code === '23505') {
+                    result = await client.query('SELECT id from topics WHERE topic_url = $1', [topic_url]);
+                } else {
+                    throw e;
+                }
+            }
         }
 
-        topic_id = result.rows[0].id;
+        const topic_id = result.rows[0].id;
         log.debug(`topic_id: ${topic_id}`);
 
         const date = new Date();
         const duration = lease_seconds + Math.round(date.getTime() / 1000);
 
-        await client.query('BEGIN')
-        const sql_query = 'INSERT INTO subscriptions (secret, callback, created, duration, topic_id, status) VALUES ($1, $2, $3, $4, $5, $6)';
-        const sql_values = [secret, callback, date.toISOString(), duration, topic_id, subscription_state.ACTIVE];
-        await client.query(sql_query, sql_values);
-        await client.query('COMMIT')
+        result = await client.query(
+            'SELECT id FROM subscriptions WHERE topic_id = $1 AND callback = $2',
+            [topic_id, callback]
+        );
 
+        if (result.rowCount === 0) {
+            const sql_query = 'INSERT INTO subscriptions (secret, callback, created, duration, topic_id, status) VALUES ($1, $2, $3, $4, $5, $6)';
+            const sql_values = [secret, callback, date.toISOString(), duration, topic_id, subscription_state.ACTIVE];
+            await client.query(sql_query, sql_values);
+        } else {
+            const sql_query = 'UPDATE subscriptions SET secret = $1, updated = $3, duration = $4, status = $5 WHERE topic_id = $2 AND callback = $6';
+            const sql_values = [secret, topic_id, date.toISOString(), duration, subscription_state.ACTIVE, callback];
+            await client.query(sql_query, sql_values);
+        }
+
+        await client.query('COMMIT')
 
     } catch (e) {
         await client.query('ROLLBACK')
@@ -198,7 +234,8 @@ let deleteSubscription = async function (topic, callback) {
 
     try {
         await client.query('BEGIN')
-        const sql_query = 'DELETE FROM subscriptions WHERE topic_id = (SELECT id from topics WHERE topic = $1) AND callback = $2';
+        // topic is not enforced unique in the DB schema, so delete across all matching topic rows
+        const sql_query = 'DELETE FROM subscriptions WHERE topic_id IN (SELECT id from topics WHERE topic = $1) AND callback = $2';
         const sql_values = [topic, callback];
         client.query(sql_query, sql_values);
         await client.query('COMMIT')
@@ -211,4 +248,4 @@ let deleteSubscription = async function (topic, callback) {
 }
 
 
-module.exports = { pool, subscription_state, numSubscriptions, getSubscriptions, getSubscriptions, insertSubscription, updateSubscription, deleteSubscription, disableSubscription, activateSubscription, deactivateSubscription, getTopics }
+module.exports = { pool, subscription_state, clearAll, numSubscriptions, getSubscriptions, getSubscriptions, insertSubscription, updateSubscription, deleteSubscription, disableSubscription, activateSubscription, deactivateSubscription, getTopics, loadAllSubscriptions }

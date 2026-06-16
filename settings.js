@@ -56,10 +56,23 @@ module.exports = {
 	"publisher": {
 	    "url": process.env.PUBLISHER_URL || process.env.STA_ROOT_URL
 	},
+        "redis": {
+            "url": process.env.REDIS_URL || "redis://localhost:6379"
+        },
+        "queue": {
+            "name": process.env.QUEUE_NAME || "notifications",
+            "maxWaiting": parseInt(process.env.QUEUE_MAX_WAITING || "120000", 10),
+            "removeOnCompleteCount": parseInt(process.env.QUEUE_REMOVE_ON_COMPLETE_COUNT || "10000", 10)
+        },
+        "delivery": {
+            "workerConcurrency": parseInt(process.env.DELIVERY_WORKER_CONCURRENCY || "100", 10),
+            "postTimeoutMs": parseInt(process.env.DELIVERY_POST_TIMEOUT_MS || "30000", 10),
+            "jobMaxAttempts": parseInt(process.env.DELIVERY_JOB_MAX_ATTEMPTS || "3", 10)
+        },
         "max_request_size": 32768,
         "max_url_size": 2024,
         "max_topic_size": 4096,
         "max_content_size": 1048576
-    }, 
+    },
     log
 }

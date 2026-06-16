@@ -4,22 +4,32 @@
   "private": true,
   "scripts": {
     "start": "node ./server.js",
+    "start:delivery": "node ./server-delivery.js",
+    "start:api": "HUB_MODE=api node ./server.js",
+    "start:ingest": "HUB_MODE=ingest node ./server.js",
+    "start:all": "HUB_MODE=all node ./server.js",
     "publisher": "nodemon ./test/helpers/publisher.js localhost 8180",
     "subscriber": "nodemon ./test/helpers/subscriber.js localhost 8181",
-    "test": "mocha --exit --debug --timeout 10000 test"
+    "test": "mocha --exit --debug --timeout 10000 test",
+    "burst": "node ./test/helpers/burst_trigger.js --topic ABC --rate 1000 --seconds 5",
+    "burst:sub": "node ./test/helpers/subscribe_trigger.js --topic ABC-UNSUB",
+    "burst:run": "npm run burst:sub && node ./test/helpers/burst_trigger.js --topic ABC-UNSUB --rate 1000 --seconds 5"
   },
   "dependencies": {
     "assert": "^2.1.0",
     "braces": "^3.0.3",
+    "bullmq": "^5.34.0",
     "dotenv": "^16.4.5",
     "expect": "^29.7.0",
     "express": "^4.21.1",
+    "ioredis": "^5.4.2",
     "loglevel": "^1.9.2",
     "mocha": "^10.7.3",
     "mqtt": "^5.10.1",
     "parse-http-header": "^1.0.1",
     "pg": "^8.13.0",
     "serve-favicon": "^2.5.0",
+    "undici": "^7.5.0",
     "urllib": "^4.4.0"
   },
   "devDependencies": {

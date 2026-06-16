@@ -29,7 +29,9 @@ const parseHttpHeader = require('parse-http-header');
 const querystring = require("querystring");
 const crypto = require("crypto");
 const db = require('../helpers/db');
-const mqtt_client = require('../helpers/mqtt_client');
+const subscriptionCache = require('../helpers/cache/subscriptions');
+const { publishSubscribe } = require('../helpers/mqtt/commands');
+const { publishRefreshTopic } = require('../helpers/cache/invalidation');
 const { config, log } = require('../settings');
 
 function parseLink(data) {
@@ -51,7 +53,7 @@ function parseLink(data) {
 let subscribe = async function (topic_url, topic, callback, lease_seconds = config.hub.default_lease_seconds, secret = null) {
 
     // Validate that subscription with Publisher is possible
-    const url = config.publisher.url + topic;
+    const url = new URL(topic, config.publisher.url).toString();
     log.info('Starting validation of intent with publisher: ', url);
     log.info('topic_url: ', topic_url.toString());
     const status = await request(url, { method: 'HEAD' })
@@ -153,30 +155,8 @@ let subscribe = async function (topic_url, topic, callback, lease_seconds = conf
                 return;
             }
 
-            // Register subscription with Publisher
-            mqtt_client.subscribe('' + topic, async (err, granted) => {
-                if (err !== null) log.error(err);
-                if ((granted.length > 0) && ((granted[0].topic !== topic) || (err !== null))) {
-                    // mqtt.subscribe did return an error, so send denied to callback ...
-                    log.error('topic registration with SensorThings service failed: ' + topic);
-                    request(callback,
-                        {
-                            method: 'GET',
-                            data: {
-                                'hub.mode': 'denied',
-                                'hub.topic': topic_url.toString(), //querystring.escape(topic_url),
-                                'hub.reason': 'Publisher MQTT subscription error'
-                            }
-                        }
-                    ).then(res => {
-                        log.debug(`hub.denied response status code: ${res.statusCode}`);
-                    }).catch(reason => {
-                        log.error(`hub.denied error: ${reason}`);
-                    });
-
-                    return;
-                }
-            });
+            // Request MQTT subscription via ingest process
+            await publishSubscribe('' + topic);
 
             // find all callback URLs for the topic...
             let subscriptions = await db.getSubscriptions(topic);
@@ -194,6 +174,9 @@ let subscribe = async function (topic_url, topic, callback, lease_seconds = conf
                 await db.updateSubscription(subscription[0].topic_id, callback, lease_seconds, secret);
                 log.info(`subscription updated: ${topic_url} -> ${callback}`);
             }
+
+            await subscriptionCache.refreshTopic(topic);
+            await publishRefreshTopic(topic);
 
         }).catch(error => {
             log.error(`validation of intent error for ${topic_url} -> ${callback}: ${error}`);

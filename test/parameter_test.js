@@ -72,15 +72,10 @@ describe('Subscribe Testing - with correct hub.secret', () => {
         topic = 'hub.secret=secret';
 
         before(`remove subscription for ${topic}`, async function () {
-            let topics = await db.getTopics();
-            console.log("topics: ", topics);
-            topics.forEach(topic => async function () {
-                await db.deleteSubscription(topic.topic);
-            });
-            assert.equal(await db.numSubscriptions(topic), 0);
+            await db.clearAll();
         });
         after(`remove subscription for ${topic}`, async function () {
-            await db.deleteSubscription(topic);
+            await db.clearAll();
         });
 
 
@@ -91,7 +86,24 @@ describe('Subscribe Testing - with correct hub.secret', () => {
             http_client.post(config.hub.url, headers, params, async (err, res) => {
                 try {
                     assert.equal(res.statusCode, 202, message);
-                    done();
+                    const startedAt = Date.now();
+                    const poll = async () => {
+                        try {
+                            const no = await db.numSubscriptions(topic);
+                            if (no >= 1) {
+                                done();
+                                return;
+                            }
+                            if (Date.now() - startedAt > 8000) {
+                                done(new Error(`Timed out waiting for subscription to be stored for topic ${topic}. numSubscriptions=${no}`));
+                                return;
+                            }
+                            setTimeout(poll, 200);
+                        } catch (e) {
+                            done(e);
+                        }
+                    };
+                    poll();
                 }
                 catch (err) {
                     console.log(err);
@@ -112,15 +124,10 @@ describe('Subscribe Testing - with correct hub.secret', () => {
         topic = 'hub.secret=foobar';
 
         before(`remove subscription for ${topic}`, async function () {
-            let topics = await db.getTopics();
-            console.log("topics: ", topics);
-            topics.forEach(topic => async function () {
-                await db.deleteSubscription(topic.topic);
-            });
-            assert.equal(await db.numSubscriptions(topic), 0);
+            await db.clearAll();
         });
         after(`remove subscription for ${topic}`, async function () {
-            await db.deleteSubscription(topic);
+            await db.clearAll();
         });
 
 
@@ -131,7 +138,24 @@ describe('Subscribe Testing - with correct hub.secret', () => {
             http_client.post(config.hub.url, headers, params, async (err, res) => {
                 try {
                     assert.equal(res.statusCode, 202, message);
-                    done();
+                    const startedAt = Date.now();
+                    const poll = async () => {
+                        try {
+                            const no = await db.numSubscriptions(topic);
+                            if (no >= 1) {
+                                done();
+                                return;
+                            }
+                            if (Date.now() - startedAt > 8000) {
+                                done(new Error(`Timed out waiting for subscription to be stored for topic ${topic}. numSubscriptions=${no}`));
+                                return;
+                            }
+                            setTimeout(poll, 200);
+                        } catch (e) {
+                            done(e);
+                        }
+                    };
+                    poll();
                 }
                 catch (err) {
                     console.log(err);
@@ -152,15 +176,10 @@ describe('Subscribe Testing - no hub.secret', () => {
         topic = 'ABC';
 
         before(`remove subscription for ${topic}`, async function () {
-            let topics = await db.getTopics();
-            console.log("topics: ", topics);
-            topics.forEach(topic => async function () {
-                await db.deleteSubscription(topic.topic);
-            });
-            assert.equal(await db.numSubscriptions(topic), 0);
+            await db.clearAll();
         });
         after(`remove subscription for ${topic}`, async function () {
-            await db.deleteSubscription(topic);
+            await db.clearAll();
         });
 
         params = { 'hub.mode': 'subscribe', 'hub.callback': 'http://subscriber:8081/accepted/' + topic, 'hub.topic': sta_root_url + '/' + topic };
@@ -170,7 +189,24 @@ describe('Subscribe Testing - no hub.secret', () => {
             http_client.post(config.hub.url, headers, params, async (err, res) => {
                 try {
                     assert.equal(res.statusCode, 202, message);
-                    done();
+                    const startedAt = Date.now();
+                    const poll = async () => {
+                        try {
+                            const no = await db.numSubscriptions(topic);
+                            if (no >= 1) {
+                                done();
+                                return;
+                            }
+                            if (Date.now() - startedAt > 8000) {
+                                done(new Error(`Timed out waiting for subscription to be stored for topic ${topic}. numSubscriptions=${no}`));
+                                return;
+                            }
+                            setTimeout(poll, 200);
+                        } catch (e) {
+                            done(e);
+                        }
+                    };
+                    poll();
                 }
                 catch (err) {
                     console.log(err);
@@ -188,19 +224,13 @@ describe('Subscribe / Unsubscribe Testing', () => {
     let message = '';
 
     describe('Subscribe and then unsubscribe', () => {
-        topic = 'ABC';
+        topic = 'ABC-UNSUB';
         
         before(`remove subscription for ${topic}`, async function () {
-            let topics = await db.getTopics();
-            console.log("topics: ", topics);
-            topics.forEach(topic => async function () {
-                await db.deleteSubscription(topic.topic);
-            });
-            
-            assert.equal(await db.numSubscriptions(topic), 0);
+            await db.clearAll();
         });
         after(`remove subscription for ${topic}`, async function () {
-            await db.deleteSubscription(topic);
+            await db.clearAll();
         });
         it(message, function (done) {
             params = { 'hub.mode': 'subscribe', 'hub.callback': 'http://subscriber:8081/accepted/' + topic, 'hub.topic': sta_root_url + '/' + topic };
@@ -215,28 +245,40 @@ describe('Subscribe / Unsubscribe Testing', () => {
                 }
             });
 
-            // The validation of intent is async. Once finished, the subscription is stored in the DB. The test simply waits for this to happen...
-            setTimeout(async () => {
-                console.log("Validating if topic exists: ", topic);
-                let no = await db.numSubscriptions(topic);
-                console.log("no. of topics: ", no);
-                assert.equal(no, 1, "topic exists: " + topic);
+            // The validation of intent is async. Poll until the subscription is stored.
+            const startedAt = Date.now();
+            const poll = async () => {
+                try {
+                    const no = await db.numSubscriptions(topic);
+                    if (no === 1) {
+                        console.log("Unsubscribe starting");
+                        params = { 'hub.mode': 'unsubscribe', 'hub.callback': 'http://subscriber:8081/accepted/' + topic, 'hub.topic': sta_root_url + '/' + topic };
+                        message = `unsubscribe to topic ${topic}`;
+                        http_client.post(config.hub.url, headers, params, async (err, res) => {
+                            try {
+                                assert.equal(res.statusCode, 202, message);
+                                console.log("Unsubscribe finished");
+                                done();
+                            }
+                            catch (err) {
+                                done(err);
+                            }
+                        });
+                        return;
+                    }
 
-                console.log("Unsubscribe starting");
-                // Unsubscribe for topic
-                params = { 'hub.mode': 'unsubscribe', 'hub.callback': 'http://subscriber:8081/accepted/' + topic, 'hub.topic': sta_root_url + '/' + topic };
-                message = `unsubscribe to topic ${topic}`;
-                http_client.post(config.hub.url, headers, params, async (err, res) => {
-                    try {
-                        assert.equal(res.statusCode, 202, message);
+                    if (Date.now() - startedAt > 8000) {
+                        done(new Error(`Timed out waiting for subscription to be stored for topic ${topic}. numSubscriptions=${no}`));
+                        return;
                     }
-                    catch (err) {
-                        console.log(err);
-                    }
-                });
-                console.log("Unsubscribe finished");
-                done();
-            }, 1000);
+
+                    setTimeout(poll, 200);
+                } catch (err) {
+                    done(err);
+                }
+            };
+
+            poll();
 
             
 

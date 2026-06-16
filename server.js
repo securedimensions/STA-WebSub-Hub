@@ -22,84 +22,40 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
  */
 
-"use strict"
+"use strict";
 
-const app = require('./app');
-const mqtt_client = require('./helpers/mqtt_client');
-const { config, log } = require('./settings');
-const http_publish = require('./helpers/http_publish');
-const {pool} = require('./helpers/db');
-const {Query} = require('pg');
-const assert = require("assert");
-const querystring = require('querystring');
+const { log } = require("./settings");
 
-var server = null;
+const mode = (process.env.HUB_MODE || "all").toLowerCase();
 
-mqtt_client.on('connect', async () => {
-    log.info(`Connected to Publisher ${config.sta.root_url}`);
-
-    if (server !== null) {
-        log.error('Connection loop with MQTT Broker...');
-    }
-    else {
-        // Start the HTTP API
-        server = app.listen(config.hub.port, function () {
-            log.info(`Hub is up with URL ${config.hub.url}`);
-            log.info(`Hub API listening on port ${config.hub.port}`);
-        }).on('error', function (err) {
-            log.error(`Failed to start Hub:\n${err}`);
-            process.exit(1);
-        }).on('listening', async function() {
-
-            // Register all topics with the publisher
-            const client = await pool.connect();
-            const query = new Query('SELECT topic from topics');
-            const result = client.query(query);
-
-            assert.equal(query, result);
-
-            query.on('row', (row) => {
-                const topic = querystring.unescape(row.topic);
-                log.info('Subscribing to MQTT topic: ', topic);
-                // Register subscription with Publisher
-                
-                mqtt_client.subscribe(topic, (err, granted) => {
-                    if (err !== null) log.error(err);
-                    if (granted !== null) log.debug(granted[0]);
-                });
-                
-            }).on('end', () => {
-                client.release();
-                log.info("Hub ready!");
-            }).on('error', (error) => {
-                log.error('init MQTT subscriptions error: ', error)
-            });
-        });
-        
-    }
-}).on('disconnect', () => {
-    log.info(`Disconnected from Publisher ${config.sta.root_url}`);
-    app.removeAllListeners();
-}).on('close', () => {
-    log.info(`Publisher ${config.sta.root_url} closed MQTT connection`);
-    app.removeAllListeners();
-}).on('message', (topic, message) => {
-
-    if (message.length > config.max_content_size) {
-        log.error(`rejecting content delivery as size exceeds limit of ${config.max_content_size}`);
+async function main() {
+    if (mode === "api") {
+        require("./server-api");
         return;
     }
 
-    try {
-        if (config.hub.enforce_JSON) {
-            // We need to make sure to only work on JSON content delivery
-            JSON.parse(message.toString());
-        }
-    
-        // publish the message to subscribers
-        http_publish(topic, message.toString());
+    if (mode === "ingest") {
+        require("./server-ingest");
+        return;
     }
-    catch(e) {
-        log.error(`payload not JSON format: ${e}`);
+
+    if (mode === "delivery") {
+        require("./server-delivery");
+        return;
     }
-  });
+
+    if (mode !== "all") {
+        throw new Error(`unknown HUB_MODE: ${mode}`);
+    }
+
+    // all-in-one dev mode: run all roles in one process
+    require("./server-api");
+    require("./server-ingest");
+    require("./server-delivery");
+    log.info("hub running in HUB_MODE=all");
+}
+
+main().catch((err) => {
+    log.error(`failed to start hub: ${err.message}`);
+    process.exit(1);
+});

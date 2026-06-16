@@ -21,6 +21,17 @@
 #SOFTWARE.
  
 services:
+  sta-websub-hub-redis:
+    image: redis:7-alpine
+    restart: always
+    command: redis-server --maxmemory 1gb --maxmemory-policy noeviction
+    expose:
+      - "6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
   sta-websub-hub-db:
     image: postgres:14.2
     restart: always
@@ -36,7 +47,7 @@ services:
       interval: 10s
       timeout: 3s
       retries: 3
-  sta-websub-hub:
+  sta-websub-hub-api:
     build: 
       context: ..
       dockerfile: Dockerfile
@@ -50,9 +61,49 @@ services:
       - "PUBLISHER_URL=$PUBLISHER_URL"
       - "STA_ROOT_URL=$STA_ROOT_URL"
       - "STA_MQTT_URL=$STA_MQTT_URL"
+      - "REDIS_URL=redis://sta-websub-hub-redis:6379"
+      - "HUB_MODE=api"
     ports:
       - "$HUB_PORT:$HUB_PORT"
     depends_on:
+      sta-websub-hub-redis:
+        condition: service_healthy
+      sta-websub-hub-db:
+        condition: service_healthy
+  sta-websub-hub-ingest:
+    build: 
+      context: ..
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - ./.env
+    environment:
+      - "HUB_LOG_LEVEL=$HUB_LOG_LEVEL"
+      - "STA_ROOT_URL=$STA_ROOT_URL"
+      - "STA_MQTT_URL=$STA_MQTT_URL"
+      - "REDIS_URL=redis://sta-websub-hub-redis:6379"
+      - "HUB_MODE=ingest"
+    depends_on:
+      sta-websub-hub-redis:
+        condition: service_healthy
+      sta-websub-hub-db:
+        condition: service_healthy
+  sta-websub-hub-delivery:
+    build: 
+      context: ..
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - ./.env
+    environment:
+      - "HUB_LOG_LEVEL=$HUB_LOG_LEVEL"
+      - "STA_ROOT_URL=$STA_ROOT_URL"
+      - "STA_MQTT_URL=$STA_MQTT_URL"
+      - "REDIS_URL=redis://sta-websub-hub-redis:6379"
+      - "HUB_MODE=delivery"
+    depends_on:
+      sta-websub-hub-redis:
+        condition: service_healthy
       sta-websub-hub-db:
         condition: service_healthy
 volumes:

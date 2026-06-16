@@ -13,7 +13,7 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - ../docker/create.sql:/docker-entrypoint-initdb.d/create.sql
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
       - postgres_data:/var/lib/postgresql/data/
     healthcheck:
       test: ["CMD-SHELL", "sh -c 'pg_isready -h db -p 5432 -U websub -d websub'"]
@@ -31,6 +31,19 @@ services:
     volumes:
       - ./config:/mosquitto/config:rw
     restart: no
+  redis:
+    image: redis:7-alpine
+    restart: no
+    command: redis-server --maxmemory 256mb --maxmemory-policy noeviction
+    expose:
+      - "6379"
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
   publisher:
     build: 
       context: ../test/publisher
@@ -57,7 +70,7 @@ services:
       - "SUBSCRIBER_LOG_LEVEL=DEBUG"
     ports:
       - "8081:8081"
-  hub:
+  hub-api:
     build: 
       context: ..
       dockerfile: Dockerfile
@@ -74,15 +87,63 @@ services:
       - "STA_ROOT_URL=http://publisher/"
       - "STA_MQTT_URL=mqtt://broker:1883"
       - "PUBLISHER_URL=http://publisher:8181"
+      - "REDIS_URL=redis://redis:6379"
+      - "HUB_MODE=api"
     ports:
       - "4000:4000"
     depends_on:
       broker:
         condition: service_started
+      redis:
+        condition: service_healthy
       publisher:
         condition: service_started
       subscriber:
         condition: service_started
+      db:
+        condition: service_healthy
+  hub-ingest:
+    build: 
+      context: ..
+      dockerfile: Dockerfile
+    restart: no
+    environment:
+      - "POSTGRES_HOST=db"
+      - "POSTGRES_PORT=5432"
+      - "POSTGRES_USER=websub"
+      - "POSTGRES_PASSWORD=changeme"
+      - "POSTGRES_DB=websub"
+      - "HUB_LOG_LEVEL=DEBUG"
+      - "STA_ROOT_URL=http://publisher/"
+      - "STA_MQTT_URL=mqtt://broker:1883"
+      - "REDIS_URL=redis://redis:6379"
+      - "HUB_MODE=ingest"
+    depends_on:
+      broker:
+        condition: service_started
+      redis:
+        condition: service_healthy
+      db:
+        condition: service_healthy
+  hub-delivery:
+    build: 
+      context: ..
+      dockerfile: Dockerfile
+    restart: no
+    environment:
+      - "POSTGRES_HOST=db"
+      - "POSTGRES_PORT=5432"
+      - "POSTGRES_USER=websub"
+      - "POSTGRES_PASSWORD=changeme"
+      - "POSTGRES_DB=websub"
+      - "HUB_LOG_LEVEL=DEBUG"
+      - "STA_ROOT_URL=http://publisher/"
+      - "STA_MQTT_URL=mqtt://broker:1883"
+      - "REDIS_URL=redis://redis:6379"
+      - "HUB_MODE=delivery"
+    depends_on:
+      redis:
+        condition: service_healthy
       db:
         condition: service_healthy
 volumes:

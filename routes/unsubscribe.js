@@ -30,8 +30,10 @@ const querystring = require("querystring");
 const crypto = require("crypto");
 
 const db = require('../helpers/db');
+const subscriptionCache = require('../helpers/cache/subscriptions');
 const { log } = require('../settings');
-const mqtt_client = require('../helpers/mqtt_client');
+const { publishUnsubscribe } = require('../helpers/mqtt/commands');
+const { publishRefreshTopic } = require('../helpers/cache/invalidation');
 
 let unsubscribe = async function (topic_url, topic, callback) {
 
@@ -69,17 +71,15 @@ let unsubscribe = async function (topic_url, topic, callback) {
         }
     }).then(async () => {
         await db.deleteSubscription(topic, callback);
+        await subscriptionCache.refreshTopic(topic);
+        await publishRefreshTopic(topic);
 
         // If there are no more subscriptions for the topic, unsubscribe the topic
         let num_subscriptions = await db.numSubscriptions(topic);
         log.debug(`number of subscriptions after unsubscribe for topic: ${topic}: ${num_subscriptions}`);
         if (num_subscriptions === 0) {
             log.info('unsubscribing topic: ' + topic);
-            mqtt_client.unsubscribe('' + topic, async (err) => {
-                if (err !== null) {
-                    log.error(err);
-                }
-            });
+            await publishUnsubscribe('' + topic);
         }
     }).catch(error => {
         // Validation of intent failed => subscription remains unchanged
