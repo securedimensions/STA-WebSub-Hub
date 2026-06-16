@@ -67,7 +67,14 @@ module.exports = {
         "delivery": {
             "workerConcurrency": parseInt(process.env.DELIVERY_WORKER_CONCURRENCY || "100", 10),
             "postTimeoutMs": parseInt(process.env.DELIVERY_POST_TIMEOUT_MS || "30000", 10),
-            "jobMaxAttempts": parseInt(process.env.DELIVERY_JOB_MAX_ATTEMPTS || "3", 10)
+            "jobMaxAttempts": parseInt(process.env.DELIVERY_JOB_MAX_ATTEMPTS || "3", 10),
+            "maxAttempts": parseInt(process.env.DELIVERY_MAX_ATTEMPTS || "3", 10),
+            "backoffBaseMs": parseInt(process.env.DELIVERY_BACKOFF_BASE_MS || "200", 10)
+        },
+        "circuit": {
+            "failureThreshold": parseInt(process.env.DELIVERY_CIRCUIT_FAILURE_THRESHOLD || "10", 10),
+            "windowMs": parseInt(process.env.DELIVERY_CIRCUIT_WINDOW_MS || "60000", 10),
+            "openDurationMs": parseInt(process.env.DELIVERY_CIRCUIT_OPEN_MS || "30000", 10)
         },
         "max_request_size": 32768,
         "max_url_size": 2024,

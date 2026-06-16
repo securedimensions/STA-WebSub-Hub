@@ -11,7 +11,8 @@ const subscriptionCache = require("../cache/subscriptions");
 const { publishUnsubscribe } = require("../mqtt/commands");
 const { buildWebSubHeaders } = require("./signature");
 const httpClient = require("./http_client");
-const { log } = require("../../settings");
+const circuit = require("./circuit");
+const { config, log } = require("../../settings");
 
 async function removeExpiredSubscriptions(topic) {
     const subs = subscriptionCache.getAll(topic);
@@ -34,48 +35,52 @@ async function maybeUnsubscribeTopic(topic) {
 }
 
 async function deliverToSubscriber({ notificationId, topic, payload, subscription }) {
-    if (subscription.status === db.subscription_state.DISABLED) {
-        log.warn(`subscription is disabled - not publishing payload to: ${topic} -> ${subscription.callback}`);
-        return;
+    if (circuit.isOpen(subscription.callback)) {
+        throw new Error(`circuit open for callback ${subscription.callback}`);
     }
 
-    log.debug(`delivering ${notificationId} to ${subscription.callback}`);
     const headers = buildWebSubHeaders(topic, payload, subscription.secret, notificationId);
-    const response = await httpClient.post(subscription.callback, payload, headers);
 
-    log.debug(`publishing status code for ${topic} -> ${subscription.callback}: ${response.status}`);
+    for (let attempt = 1; attempt <= config.delivery.maxAttempts; attempt += 1) {
+        try {
+            log.debug(`delivering ${notificationId} to ${subscription.callback} (attempt ${attempt})`);
+            const response = await httpClient.post(subscription.callback, payload, headers);
 
-    if (response.status >= 200 && response.status <= 299) {
-        if (subscription.status === db.subscription_state.INACTIVE) {
-            log.info(`status changed to ACTIVE for: ${topic} -> ${subscription.callback}`);
-            await db.activateSubscription(subscription.callback);
-            subscriptionCache.updateStatus(topic, subscription.callback, db.subscription_state.ACTIVE);
+            if (response.status >= 200 && response.status <= 299) {
+                circuit.recordSuccess(subscription.callback);
+                return;
+            }
+
+            if (response.status === 410) {
+                log.info("subscription gone for topic: " + topic);
+                await db.deleteSubscription(topic, subscription.callback);
+                subscriptionCache.remove(topic, subscription.callback);
+                await maybeUnsubscribeTopic(topic);
+                circuit.recordSuccess(subscription.callback);
+                return;
+            }
+
+            // Treat 5xx and 429 as transient; other 4xx are permanent errors.
+            const transient = response.status >= 500 || response.status === 429;
+            if (!transient) {
+                circuit.recordFailure(subscription.callback);
+                throw new Error(`delivery failed with status ${response.status}`);
+            }
+
+            if (attempt === config.delivery.maxAttempts) {
+                circuit.recordFailure(subscription.callback);
+                throw new Error(`delivery failed after retries with status ${response.status}`);
+            }
+        } catch (e) {
+            // Network errors / timeouts are transient, retry up to maxAttempts
+            if (attempt === config.delivery.maxAttempts) {
+                circuit.recordFailure(subscription.callback);
+                throw e;
+            }
         }
-        return;
-    }
 
-    if (response.status === 410) {
-        log.info("subscription gone for topic: " + topic);
-        await db.deleteSubscription(topic, subscription.callback);
-        subscriptionCache.remove(topic, subscription.callback);
-        await maybeUnsubscribeTopic(topic);
-        return;
-    }
-
-    throw new Error(`delivery failed with status ${response.status}`);
-}
-
-async function handleDeliveryError(topic, subscription, reason) {
-    log.error(`publishing error for ${topic} -> ${subscription.callback}: ${reason.message}`);
-
-    if ([db.subscription_state.ACTIVE, db.subscription_state.UPDATED].includes(subscription.status)) {
-        log.info(`status changed to INACTIVE for: ${topic} -> ${subscription.callback}`);
-        await db.deactivateSubscription(subscription.callback);
-        subscriptionCache.updateStatus(topic, subscription.callback, db.subscription_state.INACTIVE);
-    } else if (subscription.status === db.subscription_state.INACTIVE) {
-        log.info(`status changed to DISABLED for: ${topic} -> ${subscription.callback}`);
-        await db.disableSubscription(subscription.callback);
-        subscriptionCache.updateStatus(topic, subscription.callback, db.subscription_state.DISABLED);
+        const delay = config.delivery.backoffBaseMs * Math.pow(2, attempt - 1);
+        await new Promise((r) => setTimeout(r, delay));
     }
 }
 
@@ -94,12 +99,7 @@ async function processNotification(data) {
 
     const results = await Promise.allSettled(
         subs.map(async (subscription) => {
-            try {
-                await deliverToSubscriber({ notificationId, topic, payload, subscription });
-            } catch (reason) {
-                await handleDeliveryError(topic, subscription, reason);
-                throw reason;
-            }
+            await deliverToSubscriber({ notificationId, topic, payload, subscription });
         })
     );
 
