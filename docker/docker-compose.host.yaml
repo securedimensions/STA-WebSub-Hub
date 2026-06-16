@@ -1,0 +1,77 @@
+# Hub services only — PostgreSQL and Redis run on the host.
+#
+# Usage:
+#   cp .env.example .env
+#   # set POSTGRES_HOST=host.docker.internal
+#   # set REDIS_URL=redis://host.docker.internal:6379
+#   # set STA_MQTT_URL=mqtt://host.docker.internal:1883  (if MQTT is on the host)
+#   docker compose -f docker-compose.host.yaml up -d --build
+#
+# On Linux, extra_hosts below maps host.docker.internal to the host gateway.
+# Ensure Postgres and Redis accept connections from Docker bridge IPs.
+
+services:
+  sta-websub-hub-api:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - ./.env
+    environment:
+      - "HUB_PORT=$HUB_PORT"
+      - "HUB_LOG_LEVEL=$HUB_LOG_LEVEL"
+      - "HUB_URL=$HUB_URL"
+      - "PUBLISHER_URL=$PUBLISHER_URL"
+      - "STA_ROOT_URL=$STA_ROOT_URL"
+      - "STA_MQTT_URL=$STA_MQTT_URL"
+      - "POSTGRES_HOST=${POSTGRES_HOST:-host.docker.internal}"
+      - "REDIS_URL=${REDIS_URL:-redis://host.docker.internal:6379}"
+      - "HUB_MODE=api"
+      - "HUB_STATS_INTERVAL_MS=1000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "$HUB_PORT:$HUB_PORT"
+
+  sta-websub-hub-ingest:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - ./.env
+    environment:
+      - "HUB_LOG_LEVEL=$HUB_LOG_LEVEL"
+      - "STA_ROOT_URL=$STA_ROOT_URL"
+      - "STA_MQTT_URL=$STA_MQTT_URL"
+      - "POSTGRES_HOST=${POSTGRES_HOST:-host.docker.internal}"
+      - "REDIS_URL=${REDIS_URL:-redis://host.docker.internal:6379}"
+      - "HUB_MODE=ingest"
+      - "HUB_STATS_INTERVAL_MS=1000"
+      - "HUB_OPS_PORT=4001"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "4001:4001"
+
+  sta-websub-hub-delivery:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - ./.env
+    environment:
+      - "HUB_LOG_LEVEL=$HUB_LOG_LEVEL"
+      - "STA_ROOT_URL=$STA_ROOT_URL"
+      - "STA_MQTT_URL=$STA_MQTT_URL"
+      - "POSTGRES_HOST=${POSTGRES_HOST:-host.docker.internal}"
+      - "REDIS_URL=${REDIS_URL:-redis://host.docker.internal:6379}"
+      - "HUB_MODE=delivery"
+      - "HUB_STATS_INTERVAL_MS=1000"
+      - "HUB_OPS_PORT=4002"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "4002:4002"
