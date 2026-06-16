@@ -6,17 +6,33 @@ This repository contains an open source implementation of the OGC SensorThings A
 According to the W3C WebSub Recommendation, this `Hub` implementation leverages the freedom of interacting with the `publisher` according to "The hub and the publisher can agree on any mechanism, as long as the hub is eventually able send the updated payload to the subscribers."[section 6, W3C WebSub Recommendation](https://www.w3.org/TR/websub/#publishing). Therefore, and as a compliant OGC SensorThings API WebSub Hub, this implementation connects to the `publisher` via MQTT. Any events received for the subscribed topics will be delivered to the `subscriber`using HTTP POST.
 
 ## Implementation
-The implementation is based on the latest version of NodeJS (version 22 at the time of writing) for easy implementation of the asynchronous processing of subscription requests, required by the W3C Recommendation. The NodeJS asynchronous support also allows the independent processing of content delivery to the `subscriber`. 
+The implementation is based on the latest version of NodeJS (version 22 at the time of writing) for easy implementation of the asynchronous processing of subscription requests, required by the W3C Recommendation. The NodeJS asynchronous support also allows the independent processing of content delivery to the `subscriber`.
 
-The topic / subscription management requires a Postgres database. The `./docker/create.sql` contains the relevant instructions.
+The hub ingests MQTT notifications from the publisher, enqueues them in Redis (BullMQ), and delivers them to subscriber callbacks via HTTP POST. Subscription metadata is stored in PostgreSQL. The `./docker/create.sql` contains the relevant database instructions.
+
+### Process roles (`HUB_MODE`)
+The hub can run as separate processes for horizontal scaling:
+
+| Mode | Entry | Responsibility |
+|------|-------|----------------|
+| `api` | `server-api.js` | WebSub subscribe/unsubscribe API |
+| `ingest` | `server-ingest.js` | MQTT subscription + enqueue notifications |
+| `delivery` | `server-delivery.js` | BullMQ worker + HTTP fan-out to callbacks |
+| `all` | `server.js` | All roles in one process (local development) |
+
+Start scripts: `npm run start:api`, `start:ingest`, `start:delivery`, `start:all`.
+
+Redis is required (`REDIS_URL`, default `redis://localhost:6379`). Processes coordinate via Redis pub/sub for MQTT topic commands and subscription-cache invalidation.
 
 ### Content Delivery Format
 The content delivery is limited to `application/json`. Any other format is rejected.
 
 ### Content Delivery Error Handling
-This implementation uses a state diagram for delivering content to subscribers' callbacks. In case an error occurs when POSTing the content to the callback, the hub's delivery status for that subscription changes from `active` or `updated` to `inactive`. If the next attempt to deliver content fails, the state changes to `disabled` and the hub stops further attempts to deliver content for that subscription to the callback. Once the subscription is updated (via a `subscribe` request), the state changes back to `updated` and the hub restarts the attempts to deliver content.
+Delivery uses a BullMQ queue with per-callback retries and exponential backoff. Transient errors (network failures, HTTP 5xx, 429) are retried up to `DELIVERY_MAX_ATTEMPTS` (default 3). Permanent client errors (most 4xx) fail immediately.
 
-This means that the hub allows two failed attempt to deliver content to a callback.
+An in-memory circuit breaker per callback URL opens after repeated failures within a sliding window (`DELIVERY_CIRCUIT_*` settings). While open, deliveries to that callback are skipped until the circuit cools down. HTTP 410 (`Gone`) still removes the subscription from the database.
+
+Concurrent POSTs to the same callback are limited by `DELIVERY_PER_CALLBACK_CONCURRENCY` (default 20).
 
 ### Content Delivery `Gone`
 In case the content delivery to a callback returns HTTP status code 410, the hub removes the subscription from the database. This solution was chosen over the `mark the subscription as gone` to avoid flooding the database with invalid subscriptions.
@@ -54,18 +70,50 @@ Some environment variables control the basic behavior of the Hub by overwriting 
 * **STA_MQTT_USER**: The MQTT username. Default: `null`.
 * **STA_MQTT_PASSWORD**: The MQTT password. Default: `null`.
 * **PUBLISHER_URL**: For a service where the WebSub Discovery and MQTT subscription is separated. Default: *STA_ROOT_URL*
+* **REDIS_URL**: Redis connection for BullMQ and pub/sub. Default: `redis://localhost:6379`
+* **HUB_MODE**: `api`, `ingest`, `delivery`, or `all`. Default: `all` when using `npm start`
+* **QUEUE_MAX_WAITING**: Backpressure limit for waiting queue jobs. Default: `120000`
+* **DELIVERY_WORKER_CONCURRENCY**: BullMQ worker concurrency. Default: `100`
+* **DELIVERY_PER_CALLBACK_CONCURRENCY**: Max concurrent POSTs per callback URL. Default: `20`
+* **DELIVERY_MAX_ATTEMPTS**: HTTP retry attempts per notification per callback. Default: `3`
+* **DELIVERY_BACKOFF_BASE_MS**: Base delay for exponential backoff. Default: `200`
+* **DELIVERY_CIRCUIT_FAILURE_THRESHOLD**: Failures before opening circuit. Default: `10`
+* **DELIVERY_CIRCUIT_WINDOW_MS**: Sliding window for circuit failures. Default: `60000`
+* **DELIVERY_CIRCUIT_OPEN_MS**: How long a circuit stays open. Default: `30000`
+* **HUB_STATS_INTERVAL_MS**: Log queue/delivery counters every N ms (0 = disabled)
+* **HUB_OPS_PORT**: Health/metrics HTTP port for ingest/delivery processes (api uses `/ops` on `HUB_PORT`)
+
+## Operations
+
+### Health and metrics
+* **API** (`HUB_MODE=api`): `GET /ops/health`, `GET /ops/metrics`
+* **Ingest** (`HUB_OPS_PORT`, default 4001 in docker): `GET /health`, `GET /metrics`
+* **Delivery** (`HUB_OPS_PORT`, default 4002 in docker): `GET /health`, `GET /metrics` (includes open circuits)
+
+### Failed jobs (DLQ)
+BullMQ retains failed jobs (`removeOnFail: false`). Inspect and retry:
+
+```bash
+npm run failed:jobs
+npm run failed:jobs -- --limit=50 --start=0
+npm run failed:jobs -- --retry=<jobId>
+```
+
+Or via API: `GET /ops/failed`, `POST /ops/failed/:id/retry`
 
 ## Deployment
-The deployment can be done via docker-compose from the `docker` directory. So for example `docker-compose up -d` will start the WebSub Hub.
+The deployment can be done via docker-compose from the `docker` directory. Production compose runs three hub services: `sta-websub-hub-api`, `sta-websub-hub-ingest`, and `sta-websub-hub-delivery`, plus Redis and PostgreSQL.
+
+So for example `docker-compose up -d` will start the WebSub Hub.
 
 ## Test
-The `test` directory contains a simple implementation of a WebSub Subscriber and Publisher. These services are started with an MQTT broker and a Postgres database:
+The `test` directory contains a simple implementation of a WebSub Subscriber and Publisher. These services are started with an MQTT broker, Redis, and a Postgres database:
 
 ````
 docker-compose up --build
 ````
 
-On the output, you will see the startup of the database, broker, publisher and subscriber.
+On the output, you will see the startup of the database, broker, publisher and subscriber. The test stack runs split hub services: `hub-api`, `hub-ingest`, and `hub-delivery`.
 
 The test is executed via npm:
 
@@ -74,6 +122,16 @@ npm test
 ````
 
 The output from the test should show `15 passing (1s)`.
+
+### Load / burst testing
+Subscribe to a topic and fire a burst of MQTT events via the test publisher:
+
+```bash
+npm run burst:run          # subscribe ABC-UNSUB + 1000/s for 5s
+npm run burst -- --topic ABC --rate 500 --seconds 10
+```
+
+Burst endpoint on the test publisher: `POST /burst/<topic>?rate=1000&seconds=5`
 
 ### Testing `hub.secret`
 To verify the proper functioning of the `hub.secret` parameter, the test command has started subscriptions to three topics. The publisher was triggered to periodically send MQTT events to the Hub. The `Subscriber` functions with the `hub.secret=secret`. 

@@ -64,5 +64,22 @@ function recordFailure(callback) {
     }
 }
 
-module.exports = { isOpen, recordSuccess, recordFailure };
+function getOpenCircuits() {
+    const now = nowMs();
+    const open = [];
+
+    for (const [callback, state] of stateByCallback) {
+        if (state.openUntilMs > now) {
+            open.push({
+                callback,
+                openUntilMs: state.openUntilMs,
+                openForMs: state.openUntilMs - now,
+            });
+        }
+    }
+
+    return open;
+}
+
+module.exports = { isOpen, recordSuccess, recordFailure, getOpenCircuits };
 

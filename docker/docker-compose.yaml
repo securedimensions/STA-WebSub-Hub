@@ -63,6 +63,7 @@ services:
       - "STA_MQTT_URL=$STA_MQTT_URL"
       - "REDIS_URL=redis://sta-websub-hub-redis:6379"
       - "HUB_MODE=api"
+      - "HUB_STATS_INTERVAL_MS=1000"
     ports:
       - "$HUB_PORT:$HUB_PORT"
     depends_on:
@@ -83,6 +84,8 @@ services:
       - "STA_MQTT_URL=$STA_MQTT_URL"
       - "REDIS_URL=redis://sta-websub-hub-redis:6379"
       - "HUB_MODE=ingest"
+      - "HUB_STATS_INTERVAL_MS=1000"
+      - "HUB_OPS_PORT=4001"
     depends_on:
       sta-websub-hub-redis:
         condition: service_healthy
@@ -101,6 +104,8 @@ services:
       - "STA_MQTT_URL=$STA_MQTT_URL"
       - "REDIS_URL=redis://sta-websub-hub-redis:6379"
       - "HUB_MODE=delivery"
+      - "HUB_STATS_INTERVAL_MS=1000"
+      - "HUB_OPS_PORT=4002"
     depends_on:
       sta-websub-hub-redis:
         condition: service_healthy

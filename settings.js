@@ -66,6 +66,7 @@ module.exports = {
         },
         "delivery": {
             "workerConcurrency": parseInt(process.env.DELIVERY_WORKER_CONCURRENCY || "100", 10),
+            "perCallbackConcurrency": parseInt(process.env.DELIVERY_PER_CALLBACK_CONCURRENCY || "20", 10),
             "postTimeoutMs": parseInt(process.env.DELIVERY_POST_TIMEOUT_MS || "30000", 10),
             "jobMaxAttempts": parseInt(process.env.DELIVERY_JOB_MAX_ATTEMPTS || "3", 10),
             "maxAttempts": parseInt(process.env.DELIVERY_MAX_ATTEMPTS || "3", 10),

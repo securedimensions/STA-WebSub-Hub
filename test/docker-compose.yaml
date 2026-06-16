@@ -89,6 +89,7 @@ services:
       - "PUBLISHER_URL=http://publisher:8181"
       - "REDIS_URL=redis://redis:6379"
       - "HUB_MODE=api"
+      - "HUB_STATS_INTERVAL_MS=1000"
     ports:
       - "4000:4000"
     depends_on:
@@ -118,6 +119,8 @@ services:
       - "STA_MQTT_URL=mqtt://broker:1883"
       - "REDIS_URL=redis://redis:6379"
       - "HUB_MODE=ingest"
+      - "HUB_STATS_INTERVAL_MS=1000"
+      - "HUB_OPS_PORT=4001"
     depends_on:
       broker:
         condition: service_started
@@ -141,6 +144,8 @@ services:
       - "STA_MQTT_URL=mqtt://broker:1883"
       - "REDIS_URL=redis://redis:6379"
       - "HUB_MODE=delivery"
+      - "HUB_STATS_INTERVAL_MS=1000"
+      - "HUB_OPS_PORT=4002"
     depends_on:
       redis:
         condition: service_healthy

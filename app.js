@@ -30,7 +30,11 @@ const path = require('path');
 const favicon = require('serve-favicon');
 
 const subscriptions = require('./routes/subscriptions');
+const ops = require('./routes/ops');
+const metrics = require('./helpers/metrics');
 const { config, log } = require('./settings');
+
+metrics.setRole('api');
 
 const app = express();
 app.use(function (req, res, next) {
@@ -77,6 +81,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 // WebSub API
 app.use('/api', subscriptions);
+app.use('/ops', ops);
 
 // catch 404 and forward to error handler
 app.use(function (req, res, next) {

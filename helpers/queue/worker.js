@@ -10,11 +10,10 @@ const { Worker } = require("bullmq");
 const { createConnection } = require("./connection");
 const { config, log } = require("../../settings");
 const { processNotification } = require("../delivery/fan_out");
+const metrics = require("../metrics");
 
 let worker = null;
 let statsTimer = null;
-let completed = 0;
-let failed = 0;
 
 function startWorkerStatsLogger() {
     const intervalMs = parseInt(process.env.HUB_STATS_INTERVAL_MS || "0", 10);
@@ -23,7 +22,8 @@ function startWorkerStatsLogger() {
     }
 
     statsTimer = setInterval(() => {
-        log.info(`delivery stats: completed=${completed} failed=${failed}`);
+        const s = metrics.snapshot();
+        log.info(`delivery stats: completed=${s.jobsCompleted} failed=${s.jobsFailed}`);
     }, intervalMs);
 }
 
@@ -44,12 +44,12 @@ function startWorker() {
     );
 
     worker.on("failed", (job, err) => {
-        failed += 1;
+        metrics.inc("jobsFailed");
         log.error(`delivery job ${job?.id} failed: ${err.message}`);
     });
 
     worker.on("completed", () => {
-        completed += 1;
+        metrics.inc("jobsCompleted");
     });
 
     worker.on("error", (err) => {
@@ -72,4 +72,8 @@ async function stopWorker() {
     }
 }
 
-module.exports = { startWorker, stopWorker };
+function getWorkerStats() {
+    return metrics.snapshot();
+}
+
+module.exports = { startWorker, stopWorker, getWorkerStats };

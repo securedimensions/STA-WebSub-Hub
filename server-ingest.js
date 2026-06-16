@@ -15,9 +15,15 @@ const assert = require("assert");
 const querystring = require("querystring");
 const { startMqttCommandListener } = require("./helpers/mqtt/commands");
 const { getQueue } = require("./helpers/queue/producer");
+const { getQueueStats } = require("./helpers/queue/stats");
+const metrics = require("./helpers/metrics");
+const { startOpsServer } = require("./helpers/ops/server");
+
+metrics.setRole("ingest");
 
 let mqttCmdSub = null;
 let statsTimer = null;
+let opsServer = null;
 
 async function subscribeToAllTopicsFromDb() {
     const client = await pool.connect();
@@ -114,11 +120,30 @@ mqtt_client
         }
     });
 
+opsServer = startOpsServer({
+    role: "ingest",
+    getHealth: async () => ({
+        ok: mqtt_client.connected === true,
+        role: "ingest",
+        checks: { mqtt: mqtt_client.connected === true },
+    }),
+    getMetrics: async () => ({
+        role: "ingest",
+        at: new Date().toISOString(),
+        queue: await getQueueStats(),
+        process: metrics.snapshot(),
+    }),
+});
+
 async function shutdown(signal) {
     log.info(`ingest process received ${signal}`);
     if (statsTimer) {
         clearInterval(statsTimer);
         statsTimer = null;
+    }
+    if (opsServer) {
+        opsServer.close();
+        opsServer = null;
     }
     try {
         if (mqttCmdSub) {

@@ -13,7 +13,8 @@
     "test": "mocha --exit --debug --timeout 10000 test",
     "burst": "node ./test/helpers/burst_trigger.js --topic ABC --rate 1000 --seconds 5",
     "burst:sub": "node ./test/helpers/subscribe_trigger.js --topic ABC-UNSUB",
-    "burst:run": "npm run burst:sub && node ./test/helpers/burst_trigger.js --topic ABC-UNSUB --rate 1000 --seconds 5"
+    "burst:run": "npm run burst:sub && node ./test/helpers/burst_trigger.js --topic ABC-UNSUB --rate 1000 --seconds 5",
+    "failed:jobs": "node ./test/helpers/list_failed_jobs.js"
   },
   "dependencies": {
     "assert": "^2.1.0",

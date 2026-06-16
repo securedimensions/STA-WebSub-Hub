@@ -9,6 +9,7 @@ Copyright (c) 2024 Secure Dimensions
 const crypto = require("crypto");
 const { Queue } = require("bullmq");
 const { createConnection } = require("./connection");
+const metrics = require("../metrics");
 const { config, log } = require("../../settings");
 
 let queue = null;
@@ -26,6 +27,7 @@ async function enqueueNotification(topic, payload) {
 
     if (waiting >= config.queue.maxWaiting) {
         log.error(`queue waiting limit exceeded: ${waiting}`);
+        metrics.inc("enqueueRejected");
         throw new Error("queue full");
     }
 
@@ -43,6 +45,8 @@ async function enqueueNotification(topic, payload) {
             removeOnFail: false,
         }
     );
+
+    metrics.inc("enqueued");
 }
 
 module.exports = { enqueueNotification, getQueue };
