@@ -34,8 +34,17 @@ const subscriptionCache = require('../helpers/cache/subscriptions');
 const { log } = require('../settings');
 const { publishUnsubscribe } = require('../helpers/mqtt/commands');
 const { publishRefreshTopic } = require('../helpers/cache/invalidation');
+const { normalizeCallbackUrl, assertCallbackTargetAllowed } = require('../helpers/security/callback_policy');
 
 let unsubscribe = async function (topic_url, topic, callback) {
+    // callback already validated at API entry; re-check DNS target before any outbound request (DNS rebinding defense)
+    try {
+        const cb = normalizeCallbackUrl(callback);
+        await assertCallbackTargetAllowed(cb);
+    } catch (e) {
+        log.error(`callback blocked by policy for ${topic_url} -> ${callback}: ${e.message}`);
+        return;
+    }
 
     // validating unsubscription
     const challenge = crypto.randomBytes(16).toString('hex');
@@ -43,6 +52,7 @@ let unsubscribe = async function (topic_url, topic, callback) {
     request(callback,
         {
             method: 'GET',
+            followRedirect: false,
             data: {
                 'hub.mode': 'unsubscribe',
                 'hub.topic': topic_url.toString(), //querystring.escape(topic_url),

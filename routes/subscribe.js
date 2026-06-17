@@ -33,6 +33,7 @@ const subscriptionCache = require('../helpers/cache/subscriptions');
 const { publishSubscribe } = require('../helpers/mqtt/commands');
 const { publishRefreshTopic } = require('../helpers/cache/invalidation');
 const { config, log } = require('../settings');
+const { normalizeCallbackUrl, assertCallbackTargetAllowed } = require('../helpers/security/callback_policy');
 
 function parseLink(data) {
     let parsed_data = {};
@@ -51,6 +52,14 @@ function parseLink(data) {
 }
 
 let subscribe = async function (topic_url, topic, callback, lease_seconds = config.hub.default_lease_seconds, secret = null) {
+    // callback already validated at API entry; re-check DNS target before any outbound request (DNS rebinding defense)
+    try {
+        const cb = normalizeCallbackUrl(callback);
+        await assertCallbackTargetAllowed(cb);
+    } catch (e) {
+        log.error(`callback blocked by policy for ${topic_url} -> ${callback}: ${e.message}`);
+        return;
+    }
 
     // Validate that subscription with Publisher is possible
     const url = new URL(topic, config.publisher.url).toString();
@@ -92,6 +101,7 @@ let subscribe = async function (topic_url, topic, callback, lease_seconds = conf
                 request(callback,
                     {
                         method: 'GET',
+                        followRedirect: false,
                         data: {
                             'hub.mode': 'denied',
                             'hub.topic': querystring.escape(topic_url),
@@ -131,7 +141,7 @@ let subscribe = async function (topic_url, topic, callback, lease_seconds = conf
         params['hub.secret'] = secret;
     }
     log.debug("params: ", params);
-    request(callback, { method: 'GET', data: params })
+    request(callback, { method: 'GET', followRedirect: false, data: params })
         .then(async (res) => {
 
             // result: { data: Buffer, res: Response }
