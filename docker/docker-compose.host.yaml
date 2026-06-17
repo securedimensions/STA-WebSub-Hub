@@ -75,3 +75,18 @@ services:
       - "host.docker.internal:host-gateway"
     ports:
       - "4002:4002"
+
+  sta-websub-hub-cleanup:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.cleanup
+    restart: unless-stopped
+    env_file:
+      - ./.env
+    environment:
+      - "HUB_LOG_LEVEL=$HUB_LOG_LEVEL"
+      - "POSTGRES_HOST=${POSTGRES_HOST:-host.docker.internal}"
+      - "REDIS_URL=${REDIS_URL:-redis://host.docker.internal:6379}"
+      - "CLEANUP_CRON_SCHEDULE=${CLEANUP_CRON_SCHEDULE:-*/30 * * * *}"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

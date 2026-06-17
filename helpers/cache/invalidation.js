@@ -25,6 +25,10 @@ async function publishRefreshTopic(topic) {
     await getPublisher().publish(CHANNEL, JSON.stringify({ action: "refreshTopic", topic }));
 }
 
+async function publishReload() {
+    await getPublisher().publish(CHANNEL, JSON.stringify({ action: "reload" }));
+}
+
 async function startInvalidationListener() {
     const sub = createSubscriber();
     await sub.subscribe(CHANNEL);
@@ -32,10 +36,16 @@ async function startInvalidationListener() {
     sub.on("message", async (_channel, message) => {
         try {
             const evt = JSON.parse(message);
-            if (!evt || evt.action !== "refreshTopic" || typeof evt.topic !== "string") {
+            if (!evt || typeof evt.action !== "string") {
                 return;
             }
-            await subscriptionCache.refreshTopic(evt.topic);
+            if (evt.action === "reload") {
+                await subscriptionCache.load();
+                return;
+            }
+            if (evt.action === "refreshTopic" && typeof evt.topic === "string") {
+                await subscriptionCache.refreshTopic(evt.topic);
+            }
         } catch (e) {
             log.error(`invalid cache invalidation message: ${e.message}`);
         }
@@ -44,5 +54,5 @@ async function startInvalidationListener() {
     return sub;
 }
 
-module.exports = { publishRefreshTopic, startInvalidationListener };
+module.exports = { publishRefreshTopic, publishReload, startInvalidationListener };
 

@@ -14,7 +14,8 @@
     "burst": "node ./test/helpers/burst_trigger.js --topic ABC --rate 1000 --seconds 5",
     "burst:sub": "node ./test/helpers/subscribe_trigger.js --topic ABC-UNSUB",
     "burst:run": "npm run burst:sub && node ./test/helpers/burst_trigger.js --topic ABC-UNSUB --rate 1000 --seconds 5",
-    "failed:jobs": "node ./test/helpers/list_failed_jobs.js"
+    "failed:jobs": "node ./test/helpers/list_failed_jobs.js",
+    "cleanup:expired": "node ./scripts/cleanup-expired-subscriptions.js"
   },
   "dependencies": {
     "assert": "^2.1.0",

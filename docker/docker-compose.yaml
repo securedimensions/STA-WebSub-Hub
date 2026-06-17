@@ -111,6 +111,23 @@ services:
         condition: service_healthy
       sta-websub-hub-db:
         condition: service_healthy
+  sta-websub-hub-cleanup:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.cleanup
+    restart: unless-stopped
+    env_file:
+      - ./.env
+    environment:
+      - "HUB_LOG_LEVEL=$HUB_LOG_LEVEL"
+      - "POSTGRES_HOST=sta-websub-hub-db"
+      - "REDIS_URL=redis://sta-websub-hub-redis:6379"
+      - "CLEANUP_CRON_SCHEDULE=${CLEANUP_CRON_SCHEDULE:-*/30 * * * *}"
+    depends_on:
+      sta-websub-hub-redis:
+        condition: service_healthy
+      sta-websub-hub-db:
+        condition: service_healthy
 volumes:
   postgres_data:
 networks:

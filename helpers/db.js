@@ -52,8 +52,10 @@ let loadAllSubscriptions = async function () {
         SELECT t.topic, s.id, s.callback, s.secret, s.duration, s.status, s.topic_id
         FROM subscriptions s
         JOIN topics t ON t.id = s.topic_id
-        WHERE s.status != $1`;
-    const result = await pool.query(sql_query, [subscription_state.DISABLED]);
+        WHERE s.status != $1
+          AND (s.duration IS NULL OR s.duration >= $2)`;
+    const now = Math.round(Date.now() / 1000);
+    const result = await pool.query(sql_query, [subscription_state.DISABLED, now]);
     return result.rows;
 }
 
@@ -90,8 +92,10 @@ let getSubscriptions = async function (topic) {
         SELECT s.id, s.callback, s.secret, s.duration, s.status, s.topic_id
         FROM subscriptions s
         JOIN topics t ON t.id = s.topic_id
-        WHERE t.topic = $1`;
-    const sql_values = [topic];
+        WHERE t.topic = $1
+          AND (s.duration IS NULL OR s.duration >= $2)`;
+    const now = Math.round(Date.now() / 1000);
+    const sql_values = [topic, now];
 
     const result = await pool.query(sql_query, sql_values);
     if (result.rowCount === 0) {
@@ -248,4 +252,20 @@ let deleteSubscription = async function (topic, callback) {
 }
 
 
-module.exports = { pool, subscription_state, clearAll, numSubscriptions, getSubscriptions, getSubscriptions, insertSubscription, updateSubscription, deleteSubscription, disableSubscription, activateSubscription, deactivateSubscription, getTopics, loadAllSubscriptions }
+let deleteExpiredSubscriptions = async function () {
+    const now = Math.round(Date.now() / 1000);
+    const sql_query = `
+        DELETE FROM subscriptions s
+        USING topics t
+        WHERE s.topic_id = t.id
+          AND s.duration IS NOT NULL
+          AND s.duration < $1
+        RETURNING t.topic`;
+    const result = await pool.query(sql_query, [now]);
+    const topics = [
+        ...new Set(result.rows.map((row) => querystring.unescape(row.topic))),
+    ];
+    return { deleted: result.rowCount, topics };
+}
+
+module.exports = { pool, subscription_state, clearAll, numSubscriptions, getSubscriptions, getSubscriptions, insertSubscription, updateSubscription, deleteSubscription, deleteExpiredSubscriptions, disableSubscription, activateSubscription, deactivateSubscription, getTopics, loadAllSubscriptions }

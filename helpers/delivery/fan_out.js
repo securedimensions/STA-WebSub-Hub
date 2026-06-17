@@ -16,21 +16,8 @@ const limiter = require("./limiter");
 const metrics = require("../metrics");
 const { config, log } = require("../../settings");
 
-async function removeExpiredSubscriptions(topic) {
-    const subs = subscriptionCache.getAll(topic);
-    const seconds = Math.round(Date.now() / 1000);
-
-    for (const sub of subs) {
-        if (typeof sub.duration === "number" && seconds > sub.duration) {
-            log.info(`subscription is expired: ${topic} -> ${sub.callback}`);
-            await db.deleteSubscription(topic, sub.callback);
-            subscriptionCache.remove(topic, sub.callback);
-        }
-    }
-}
-
 async function maybeUnsubscribeTopic(topic) {
-    if (subscriptionCache.getActive(topic).length === 0) {
+    if ((await subscriptionCache.getActive(topic)).length === 0) {
         log.info(`no active subscriptions for topic: ${topic}`);
         await publishUnsubscribe("" + topic);
     }
@@ -61,7 +48,7 @@ async function deliverToSubscriber({ notificationId, topic, payload, subscriptio
                 if (response.status === 410) {
                     log.info("subscription gone for topic: " + topic);
                     await db.deleteSubscription(topic, subscription.callback);
-                    subscriptionCache.remove(topic, subscription.callback);
+                    await subscriptionCache.remove(topic, subscription.callback);
                     await maybeUnsubscribeTopic(topic);
                     circuit.recordSuccess(subscription.callback);
                     metrics.inc("postsSucceeded");
@@ -99,8 +86,7 @@ async function deliverToSubscriber({ notificationId, topic, payload, subscriptio
 async function processNotification(data) {
     const { notificationId, topic, payload } = data;
 
-    await removeExpiredSubscriptions(topic);
-    let subs = subscriptionCache.getActive(topic);
+    const subs = await subscriptionCache.getActive(topic);
 
     log.debug(`no of subscriptions for ${topic}: ${subs.length}`);
 

@@ -12,6 +12,16 @@ const { log } = require("../../settings");
 
 const byTopic = new Map();
 
+// Serialize cache mutations so concurrent delivery jobs and invalidation
+// events cannot interleave writes on the same topic entry.
+let writeLock = Promise.resolve();
+
+function withWriteLock(fn) {
+    const run = writeLock.then(() => fn());
+    writeLock = run.catch(() => {});
+    return run;
+}
+
 function upsertInMemory(topic, row) {
     const subscription = {
         id: row.id,
@@ -29,69 +39,100 @@ function upsertInMemory(topic, row) {
     } else {
         existing[index] = subscription;
     }
-    byTopic.set(topic, existing);
+    byTopic.set(topic, [...existing]);
 }
 
 async function load() {
     const rows = await db.loadAllSubscriptions();
-    byTopic.clear();
-    for (const row of rows) {
-        const topic = querystring.unescape(row.topic);
-        upsertInMemory(topic, row);
-    }
+    await withWriteLock(async () => {
+        byTopic.clear();
+        for (const row of rows) {
+            const topic = querystring.unescape(row.topic);
+            upsertInMemory(topic, row);
+        }
+    });
     log.info(`subscription cache loaded (${rows.length} subscriptions)`);
 }
 
 async function refreshTopic(topic) {
     const subs = await db.getSubscriptions(topic);
-    if (subs.length === 0) {
-        byTopic.delete(topic);
-        return;
-    }
-    byTopic.set(topic, subs);
-}
-
-function getAll(topic) {
-    return byTopic.get(topic) || [];
-}
-
-function getActive(topic) {
-    const subs = byTopic.get(topic) || [];
-    const seconds = Math.round(Date.now() / 1000);
-
-    return subs.filter((sub) => {
-        if (sub.status === db.subscription_state.DISABLED) {
-            return false;
+    await withWriteLock(async () => {
+        if (subs.length === 0) {
+            byTopic.delete(topic);
+            return;
         }
-        if (typeof sub.duration === "number" && seconds > sub.duration) {
-            return false;
-        }
-        return true;
+        byTopic.set(topic, subs);
     });
 }
 
-function updateStatus(topic, callback, status) {
-    const subs = byTopic.get(topic);
-    if (subs === undefined) {
-        return;
-    }
-    const sub = subs.find((s) => s.callback === callback);
-    if (sub !== undefined) {
-        sub.status = status;
-    }
+function snapshot(topic) {
+    return [...(byTopic.get(topic) || [])];
 }
 
-function remove(topic, callback) {
-    const subs = byTopic.get(topic);
-    if (subs === undefined) {
-        return;
+function getAll(topic) {
+    return snapshot(topic);
+}
+
+function isActiveSub(sub, seconds) {
+    if (sub.status === db.subscription_state.DISABLED) {
+        return false;
     }
-    const filtered = subs.filter((s) => s.callback !== callback);
-    if (filtered.length === 0) {
-        byTopic.delete(topic);
-    } else {
-        byTopic.set(topic, filtered);
+    if (typeof sub.duration === "number" && seconds > sub.duration) {
+        return false;
     }
+    return true;
+}
+
+async function getActive(topic) {
+    const subs = snapshot(topic);
+    const seconds = Math.round(Date.now() / 1000);
+    const active = subs.filter((sub) => isActiveSub(sub, seconds));
+
+    if (active.length < subs.length) {
+        await withWriteLock(async () => {
+            const current = byTopic.get(topic);
+            if (current === undefined) {
+                return;
+            }
+            const compacted = current.filter((sub) => isActiveSub(sub, seconds));
+            if (compacted.length === 0) {
+                byTopic.delete(topic);
+            } else {
+                byTopic.set(topic, compacted);
+            }
+        });
+    }
+
+    return active;
+}
+
+async function updateStatus(topic, callback, status) {
+    await withWriteLock(async () => {
+        const subs = byTopic.get(topic);
+        if (subs === undefined) {
+            return;
+        }
+        const sub = subs.find((s) => s.callback === callback);
+        if (sub !== undefined) {
+            sub.status = status;
+        }
+        byTopic.set(topic, [...subs]);
+    });
+}
+
+async function remove(topic, callback) {
+    await withWriteLock(async () => {
+        const subs = byTopic.get(topic);
+        if (subs === undefined) {
+            return;
+        }
+        const filtered = subs.filter((s) => s.callback !== callback);
+        if (filtered.length === 0) {
+            byTopic.delete(topic);
+        } else {
+            byTopic.set(topic, filtered);
+        }
+    });
 }
 
 module.exports = {
