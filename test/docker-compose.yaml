@@ -90,6 +90,8 @@ services:
       - "REDIS_URL=redis://redis:6379"
       - "HUB_MODE=api"
       - "HUB_STATS_INTERVAL_MS=1000"
+      - "CALLBACK_ALLOW_INSECURE_HTTP=true"
+      - "CALLBACK_ALLOW_PRIVATE_NETS=true"
     ports:
       - "4000:4000"
     depends_on:
@@ -146,6 +148,8 @@ services:
       - "HUB_MODE=delivery"
       - "HUB_STATS_INTERVAL_MS=1000"
       - "HUB_OPS_PORT=4002"
+      - "CALLBACK_ALLOW_INSECURE_HTTP=true"
+      - "CALLBACK_ALLOW_PRIVATE_NETS=true"
     depends_on:
       redis:
         condition: service_healthy

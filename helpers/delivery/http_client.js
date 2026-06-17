@@ -8,6 +8,7 @@ Copyright (c) 2024 Secure Dimensions
 
 const { request, Agent } = require("undici");
 const { config } = require("../../settings");
+const { normalizeCallbackUrl, assertCallbackTargetAllowed } = require("../security/callback_policy");
 
 const agent = new Agent({
     connections: 100,
@@ -17,6 +18,9 @@ const agent = new Agent({
 });
 
 async function post(callbackUrl, payload, headers) {
+    const u = normalizeCallbackUrl(callbackUrl);
+    await assertCallbackTargetAllowed(u);
+
     const response = await request(callbackUrl, {
         method: "POST",
         headers,

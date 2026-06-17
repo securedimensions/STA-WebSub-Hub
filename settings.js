@@ -77,6 +77,11 @@ module.exports = {
             "windowMs": parseInt(process.env.DELIVERY_CIRCUIT_WINDOW_MS || "60000", 10),
             "openDurationMs": parseInt(process.env.DELIVERY_CIRCUIT_OPEN_MS || "30000", 10)
         },
+        "security": {
+            "allowInsecureCallbackHttp": (process.env.CALLBACK_ALLOW_INSECURE_HTTP || "false").toLowerCase() === "true",
+            "allowPrivateCallbackTargets": (process.env.CALLBACK_ALLOW_PRIVATE_NETS || "false").toLowerCase() === "true",
+            "callbackDnsCacheTtlMs": parseInt(process.env.CALLBACK_DNS_CACHE_TTL_MS || "60000", 10)
+        },
         "max_request_size": 32768,
         "max_url_size": 2024,
         "max_topic_size": 4096,

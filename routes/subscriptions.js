@@ -32,6 +32,7 @@ const router = express.Router();
 const subscribe = require('./subscribe');
 const unsubscribe = require('./unsubscribe');
 
+const { validateAndAuthorizeCallback } = require('../helpers/security/callback_policy');
 
 const { config, log } = require('../settings');
 
@@ -61,6 +62,14 @@ router.post('/subscriptions', async function (request, response, next) {
 		log.error(`callback URL exceeds max size of ${config.max_url_size}: ${callback.length}`);
 		return response.status(413).contentType('text').send(`hub.callback URL maximum length is ${config.max_url_size}`);
 	}
+	if (callback.includes('\r') || callback.includes('\n')) {
+		return response.status(400).contentType('text').send('parameter `hub.callback` contains invalid characters');
+	}
+	try {
+		callback = await validateAndAuthorizeCallback(callback);
+	} catch (e) {
+		return response.status(400).contentType('text').send(`parameter \`hub.callback\` invalid: ${e.message}`);
+	}
 
 	let topic = request.body['hub.topic'] || null;
 	if (topic === null) {
@@ -71,6 +80,9 @@ router.post('/subscriptions', async function (request, response, next) {
 	if (topic.length > config.max_topic_size) {
 		log.error(`hub.topic URL exceeds max size of ${config.max_topic_size}: ${topic.length}`);
 		return response.status(413).contentType('text').send(`hub.topic URL maximum length is ${config.max_topic_size}`);
+	}
+	if (topic.includes('\r') || topic.includes('\n')) {
+		return response.status(400).contentType('text').send('parameter `hub.topic` contains invalid characters');
 	}
 
 	if (!topic.startsWith(config.sta.root_url)) {
