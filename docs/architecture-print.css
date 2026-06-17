@@ -1,0 +1,61 @@
+/* Print layout for ARCHITECTURE diagram pages.
+   Use with md-to-pdf, VS Code Markdown PDF, or browser Print to PDF:
+     npx md-to-pdf docs/diagrams/01-component-services.md --stylesheet docs/architecture-print.css
+*/
+
+@media print {
+  @page portrait {
+    size: A4 portrait;
+    margin: 20mm;
+  }
+
+  @page landscape-diagram {
+    size: A4 landscape;
+    margin: 12mm;
+  }
+
+  html,
+  body {
+    page: portrait;
+  }
+
+  .diagram-page {
+    page: landscape-diagram;
+    page-break-before: always;
+    page-break-after: always;
+    break-before: page;
+    break-after: page;
+    min-height: 170mm;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+  }
+
+  .diagram-page h1 {
+    font-size: 18pt;
+    margin: 0 0 10mm;
+  }
+
+  .diagram-page .mermaid {
+    width: 100%;
+    max-width: 100%;
+  }
+}
+
+@media screen {
+  .diagram-page {
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    padding: 1.5rem;
+    margin: 1.5rem 0;
+    background: #fafafa;
+  }
+
+  .diagram-page::before {
+    content: "Diagram page — prints in landscape on a separate page";
+    display: block;
+    font-size: 0.85rem;
+    color: #666;
+    margin-bottom: 1rem;
+  }
+}
