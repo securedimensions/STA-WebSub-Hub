@@ -26,7 +26,6 @@ async function maybeUnsubscribeTopic(topic) {
             `cache empty but database has active subscription(s) for topic="${mqttTopic}"; refreshing cache`
         );
         await subscriptionCache.refreshTopic(mqttTopic);
-        await topicActivity.markActive(mqttTopic);
         return;
     }
 
@@ -40,4 +39,11 @@ async function maybeUnsubscribeTopic(topic) {
     await publishUnsubscribe(mqttTopic);
 }
 
-module.exports = { maybeUnsubscribeTopic };
+/** Called when in-memory cache compacts to zero active subs (lazy expiry). */
+async function handleTopicBecameInactive(topic) {
+    const mqttTopic = mqttTopicKey(topic);
+    await topicActivity.markInactive(mqttTopic);
+    await maybeUnsubscribeTopic(mqttTopic);
+}
+
+module.exports = { maybeUnsubscribeTopic, handleTopicBecameInactive };

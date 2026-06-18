@@ -89,8 +89,9 @@ let numSubscriptions = async function (topic) {
         SELECT count(*)::int
         FROM subscriptions s
         WHERE s.topic_id IN (SELECT id FROM topics WHERE topic = ANY($1::text[]))
+          AND s.status != $3
           AND (s.duration IS NULL OR s.duration >= $2)`;
-    let sql_values = [topicKeys, now];
+    let sql_values = [topicKeys, now, subscription_state.DISABLED];
 
     let result = await pool.query(sql_query, sql_values);
     return result.rows[0].count;
@@ -103,9 +104,10 @@ let getSubscriptions = async function (topic) {
         FROM subscriptions s
         JOIN topics t ON t.id = s.topic_id
         WHERE t.topic = ANY($1::text[])
+          AND s.status != $3
           AND (s.duration IS NULL OR s.duration >= $2)`;
     const now = Math.round(Date.now() / 1000);
-    const sql_values = [topicKeys, now];
+    const sql_values = [topicKeys, now, subscription_state.DISABLED];
 
     const result = await pool.query(sql_query, sql_values);
     if (result.rowCount === 0) {

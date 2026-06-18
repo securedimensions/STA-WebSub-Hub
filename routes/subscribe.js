@@ -187,7 +187,7 @@ let subscribe = async function (topic_url, topic, callback, lease_seconds = conf
             await publishRefreshTopic(mqttTopicKey(topic));
 
             const mqttTopic = mqttTopicKey(topic);
-            await topicActivity.markActive(mqttTopic);
+            await topicActivity.markActive(mqttTopic, lease_seconds);
             log.info(`requesting MQTT subscribe for topic="${mqttTopic}"`);
             await publishSubscribe(mqttTopic);
 

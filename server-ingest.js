@@ -22,6 +22,7 @@ metrics.setRole("ingest");
 let mqttCmdSub = null;
 let statsTimer = null;
 let opsServer = null;
+let mqttSessionReady = false;
 
 function subscribeMqttTopic(topic, source) {
     log.debug(`MQTT subscribe request (${source}): topic="${topic}" connected=${mqtt_client.connected}`);
@@ -37,13 +38,22 @@ function unsubscribeMqttTopic(topic, source) {
     });
 }
 
-async function subscribeToActiveTopicsFromDb() {
-    const topics = await topicActivity.syncActiveFromDb();
+async function bootstrapMqttSubscriptions(isReconnect) {
+    const topics = isReconnect
+        ? await topicActivity.listActiveTopics()
+        : await topicActivity.syncActiveFromDb();
+    const source = isReconnect ? "mqtt-reconnect" : "startup-db";
+
     for (const topic of topics) {
         log.debug(`active subscription topic mqtt="${topic}"`);
-        subscribeMqttTopic(topic, "startup-db");
+        subscribeMqttTopic(topic, source);
     }
-    log.info(`Ingest ready! subscribed to ${topics.length} topic(s) with active subscriptions`);
+
+    if (isReconnect) {
+        log.info(`MQTT reconnect: resubscribed to ${topics.length} topic(s) with active leases`);
+    } else {
+        log.info(`Ingest ready! subscribed to ${topics.length} topic(s) with active subscriptions`);
+    }
 }
 
 async function startCommandListener() {
@@ -81,10 +91,18 @@ function startQueueStatsLogger() {
 
 mqtt_client
     .on("connect", async () => {
-        log.info(`Connected to MQTT broker ${config.sta.mqtt_url} (publisher ${config.sta.root_url})`);
-        await startCommandListener();
-        await subscribeToActiveTopicsFromDb();
-        startQueueStatsLogger();
+        const isReconnect = mqttSessionReady;
+        mqttSessionReady = true;
+        log.info(
+            `${isReconnect ? "Reconnected" : "Connected"} to MQTT broker ${config.sta.mqtt_url} (publisher ${config.sta.root_url})`
+        );
+        if (mqttCmdSub === null) {
+            await startCommandListener();
+        }
+        await bootstrapMqttSubscriptions(isReconnect);
+        if (statsTimer === null) {
+            startQueueStatsLogger();
+        }
     })
     .on("reconnect", () => {
         log.info(`Reconnecting to MQTT broker ${config.sta.mqtt_url}`);
