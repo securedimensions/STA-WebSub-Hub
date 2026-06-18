@@ -9,7 +9,7 @@ Copyright (c) 2024 Secure Dimensions
 const express = require("express");
 const { pool } = require("../helpers/db");
 const { getQueueStats } = require("../helpers/queue/stats");
-const { listFailedJobs, retryFailedJob } = require("../helpers/queue/failed");
+const { listFailedJobs, retryFailedJob, retryAllFailedJobs, purgeFailedJobs } = require("../helpers/queue/failed");
 const metrics = require("../helpers/metrics");
 const throughput = require("../helpers/throughput");
 const { createConnection } = require("../helpers/queue/connection");
@@ -68,6 +68,31 @@ router.get("/failed", async (req, res) => {
     const start = parseInt(req.query.start || "0", 10);
     const jobs = await listFailedJobs({ start, limit });
     res.json({ start, limit, jobs });
+});
+
+router.post("/failed/retry-all", async (req, res) => {
+    const limit = parseInt(req.query.limit || "0", 10);
+    const batchSize = parseInt(req.query.batch || "100", 10);
+    const result = await retryAllFailedJobs({
+        limit: limit > 0 ? limit : Infinity,
+        batchSize: batchSize > 0 ? batchSize : 100,
+    });
+    res.status(202).json(result);
+});
+
+router.post("/failed/purge", async (req, res) => {
+    if (req.query.confirm !== "true") {
+        return res.status(400).json({
+            error: "destructive operation; add ?confirm=true to purge failed jobs",
+        });
+    }
+    const limit = parseInt(req.query.limit || "0", 10);
+    const batchSize = parseInt(req.query.batch || "1000", 10);
+    const result = await purgeFailedJobs({
+        limit: limit > 0 ? limit : Infinity,
+        batchSize: batchSize > 0 ? batchSize : 1000,
+    });
+    res.json(result);
 });
 
 router.post("/failed/:id/retry", async (req, res) => {

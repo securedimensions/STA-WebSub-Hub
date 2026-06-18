@@ -100,9 +100,14 @@ BullMQ retains failed jobs (`removeOnFail: false`). Inspect and retry:
 npm run failed:jobs
 npm run failed:jobs -- --limit=50 --start=0
 npm run failed:jobs -- --retry=<jobId>
+npm run failed:retry-all
+npm run failed:retry-all -- --limit=1000 --batch=200
+npm run failed:purge
 ```
 
-Or via API: `GET /ops/failed`, `POST /ops/failed/:id/retry`
+Or via API: `GET /ops/failed`, `POST /ops/failed/:id/retry`, `POST /ops/failed/retry-all`, `POST /ops/failed/purge?confirm=true`
+
+**Retry-all** re-queues failed jobs for delivery (watch `queue.waiting` / subscriber load). **Purge** permanently removes failed jobs without delivering them — typical for stale live-stream data after an outage.
 
 ## Deployment
 The deployment can be done via docker-compose from the `docker` directory. Production compose runs three hub services: `sta-websub-hub-api`, `sta-websub-hub-ingest`, and `sta-websub-hub-delivery`, plus Redis and PostgreSQL.
