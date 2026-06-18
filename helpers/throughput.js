@@ -11,12 +11,12 @@ const { createConnection } = require("./queue/connection");
 const WINDOW_MS = parseInt(process.env.HUB_METRICS_THROUGHPUT_WINDOW_MS || "10000", 10);
 const WINDOW_SECONDS = Math.max(1, Math.ceil(WINDOW_MS / 1000));
 const REDIS_KEY_TTL_SECONDS = WINDOW_SECONDS + 5;
+const FLUSH_INTERVAL_MS = parseInt(process.env.HUB_THROUGHPUT_FLUSH_MS || "1000", 10);
 
 const REDIS_PREFIX = {
     enqueued: "hub:throughput:enqueued",
     jobsCompleted: "hub:throughput:jobs-completed",
     postsSucceeded: "hub:throughput:posts-succeeded",
-    // Legacy alias written by older hubs until redeployed
     delivered: "hub:throughput:delivered",
 };
 
@@ -56,8 +56,67 @@ const local = {
     postsSucceeded: new SlidingWindow(),
 };
 
+const pendingRedis = new Map();
+let redis = null;
+let flushTimer = null;
+
+function getRedis() {
+    if (redis === null) {
+        redis = createConnection();
+        redis.on("error", () => {
+            // throughput is best-effort; suppress reconnect noise
+        });
+    }
+    return redis;
+}
+
 function recordLocal(kind, amount = 1) {
     local[kind]?.record(amount);
+}
+
+function scheduleFlush() {
+    if (flushTimer !== null) {
+        return;
+    }
+    flushTimer = setTimeout(() => {
+        flushTimer = null;
+        flushPending().catch(() => {});
+    }, FLUSH_INTERVAL_MS);
+}
+
+async function flushPending() {
+    if (pendingRedis.size === 0) {
+        return;
+    }
+
+    const batch = new Map(pendingRedis);
+    pendingRedis.clear();
+
+    try {
+        const client = getRedis();
+        const sec = Math.floor(Date.now() / 1000);
+        const multi = client.multi();
+
+        for (const [kind, amount] of batch) {
+            const prefix = REDIS_PREFIX[kind];
+            if (!prefix || amount <= 0) {
+                continue;
+            }
+            const key = `${prefix}:${sec}`;
+            multi.incrby(key, amount);
+            multi.expire(key, REDIS_KEY_TTL_SECONDS);
+        }
+
+        await multi.exec();
+    } catch (_e) {
+        // best-effort
+    }
+}
+
+function record(kind, amount = 1) {
+    recordLocal(kind, amount);
+    pendingRedis.set(kind, (pendingRedis.get(kind) || 0) + amount);
+    scheduleFlush();
 }
 
 function withSnapshot(counts) {
@@ -73,7 +132,6 @@ function withSnapshot(counts) {
         enqueuedInWindow: counts.enqueued.count,
         jobsCompletedInWindow: counts.jobsCompleted.count,
         postsSucceededInWindow: counts.postsSucceeded.count,
-        // Deprecated aliases (previously both mapped to queue job completion)
         deliveredPerSecond: jobsCompletedPerSecond,
         notificationsPerSecond: postsSucceededPerSecond,
         deliveredInWindow: counts.jobsCompleted.count,
@@ -88,66 +146,23 @@ function emptySnapshot() {
     });
 }
 
-async function withRedis(fn) {
-    const redis = createConnection();
-    redis.on("error", () => {
-        // throughput is best-effort; suppress reconnect noise
-    });
-
-    try {
-        return await fn(redis);
-    } catch (_e) {
-        return null;
-    } finally {
-        try {
-            redis.disconnect();
-        } catch (_e) {
-            // ignore
-        }
-    }
-}
-
-async function recordRedis(kind, amount = 1) {
-    const prefix = REDIS_PREFIX[kind];
-    if (!prefix) {
-        return;
-    }
-
-    await withRedis(async (redis) => {
-        const sec = Math.floor(Date.now() / 1000);
-        const key = `${prefix}:${sec}`;
-        const multi = redis.multi();
-        for (let i = 0; i < amount; i++) {
-            multi.incr(key);
-        }
-        multi.expire(key, REDIS_KEY_TTL_SECONDS);
-        await multi.exec();
-    });
-}
-
-function record(kind, amount = 1) {
-    recordLocal(kind, amount);
-    recordRedis(kind, amount).catch(() => {
-        // throughput is best-effort; do not block hot paths
-    });
-}
-
 async function readRedisWindow(prefix) {
-    const result = await withRedis(async (redis) => {
+    try {
+        const client = getRedis();
         const now = Math.floor(Date.now() / 1000);
         const keys = [];
         for (let i = 0; i < WINDOW_SECONDS; i++) {
             keys.push(`${prefix}:${now - i}`);
         }
-        const values = await redis.mget(keys);
+        const values = await client.mget(keys);
         const count = values.reduce((sum, value) => sum + parseInt(value || "0", 10), 0);
         return {
             count,
             perSecond: count / WINDOW_SECONDS,
         };
-    });
-
-    return result || { count: 0, perSecond: 0 };
+    } catch (_e) {
+        return { count: 0, perSecond: 0 };
+    }
 }
 
 async function readRedisWindowMerged(prefixes) {
@@ -160,6 +175,8 @@ async function readRedisWindowMerged(prefixes) {
 }
 
 async function getGlobalSnapshot() {
+    await flushPending();
+
     const [enqueued, jobsCompleted, postsSucceeded] = await Promise.all([
         readRedisWindow(REDIS_PREFIX.enqueued),
         readRedisWindowMerged([REDIS_PREFIX.jobsCompleted, REDIS_PREFIX.delivered]),

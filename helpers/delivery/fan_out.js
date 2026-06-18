@@ -36,7 +36,6 @@ async function deliverToSubscriber({ notificationId, topic, payload, subscriptio
                 if (response.status >= 200 && response.status <= 299) {
                     circuit.recordSuccess(subscription.callback);
                     metrics.inc("postsSucceeded");
-                    throughput.recordPostSucceeded();
                     return;
                 }
 
@@ -47,7 +46,6 @@ async function deliverToSubscriber({ notificationId, topic, payload, subscriptio
                     await maybeUnsubscribeTopic(topic);
                     circuit.recordSuccess(subscription.callback);
                     metrics.inc("postsSucceeded");
-                    throughput.recordPostSucceeded();
                     return;
                 }
 
@@ -98,6 +96,11 @@ async function processNotification(data) {
             await deliverToSubscriber({ notificationId, topic, payload, subscription });
         })
     );
+
+    const successes = results.filter((result) => result.status === "fulfilled").length;
+    if (successes > 0) {
+        throughput.recordPostSucceeded(successes);
+    }
 
     const failures = results.filter((result) => result.status === "rejected");
     if (failures.length > 0) {
