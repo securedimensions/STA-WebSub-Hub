@@ -7,7 +7,7 @@ Copyright (c) 2024 Secure Dimensions
 "use strict";
 
 const db = require("../db");
-const { topicFromDb, normalizeTopicKey } = require("../topic_key");
+const { topicFromDb, mqttTopicKey } = require("../topic_key");
 const { log } = require("../../settings");
 
 const byTopic = new Map();
@@ -19,7 +19,7 @@ function setOnTopicBecameInactive(handler) {
 }
 
 function cacheKey(topic) {
-    return normalizeTopicKey(topic);
+    return mqttTopicKey(topic);
 }
 
 // Serialize cache mutations so concurrent delivery jobs and invalidation

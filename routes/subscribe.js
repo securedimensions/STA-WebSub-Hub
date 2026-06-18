@@ -33,6 +33,7 @@ const subscriptionCache = require('../helpers/cache/subscriptions');
 const { publishSubscribe } = require('../helpers/mqtt/commands');
 const { publishRefreshTopic } = require('../helpers/cache/invalidation');
 const topicActivity = require('../helpers/mqtt/topic_activity');
+const { mqttTopicKey } = require('../helpers/topic_key');
 const { config, log } = require('../settings');
 const { normalizeCallbackUrl, assertCallbackTargetAllowed } = require('../helpers/security/callback_policy');
 
@@ -182,12 +183,13 @@ let subscribe = async function (topic_url, topic, callback, lease_seconds = conf
                 log.info(`subscription updated: ${topic_url} -> ${callback}`);
             }
 
-            await subscriptionCache.refreshTopic(topic);
-            await publishRefreshTopic(topic);
+            await subscriptionCache.refreshTopic(mqttTopicKey(topic));
+            await publishRefreshTopic(mqttTopicKey(topic));
 
-            await topicActivity.markActive(topic);
-            log.info(`requesting MQTT subscribe for topic="${topic}"`);
-            await publishSubscribe("" + topic);
+            const mqttTopic = mqttTopicKey(topic);
+            await topicActivity.markActive(mqttTopic);
+            log.info(`requesting MQTT subscribe for topic="${mqttTopic}"`);
+            await publishSubscribe(mqttTopic);
 
         }).catch(error => {
             log.error(`validation of intent error for ${topic_url} -> ${callback}: ${error}`);

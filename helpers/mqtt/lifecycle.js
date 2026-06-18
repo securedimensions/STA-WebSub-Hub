@@ -9,32 +9,35 @@ Copyright (c) 2024 Secure Dimensions
 const db = require("../db");
 const subscriptionCache = require("../cache/subscriptions");
 const topicActivity = require("./topic_activity");
+const { mqttTopicKey } = require("../topic_key");
 const { publishUnsubscribe } = require("./commands");
 const { log } = require("../../settings");
 
 async function maybeUnsubscribeTopic(topic) {
-    if ((await subscriptionCache.getActive(topic)).length > 0) {
+    const mqttTopic = mqttTopicKey(topic);
+
+    if ((await subscriptionCache.getActive(mqttTopic)).length > 0) {
         return;
     }
 
-    const dbSubs = await db.getSubscriptions(topic);
+    const dbSubs = await db.getSubscriptions(mqttTopic);
     if (dbSubs.length > 0) {
         log.debug(
-            `cache empty but database has active subscription(s) for topic="${topic}"; refreshing cache`
+            `cache empty but database has active subscription(s) for topic="${mqttTopic}"; refreshing cache`
         );
-        await subscriptionCache.refreshTopic(topic);
-        await topicActivity.markActive(topic);
+        await subscriptionCache.refreshTopic(mqttTopic);
+        await topicActivity.markActive(mqttTopic);
         return;
     }
 
-    if (!(await topicActivity.tryClaimUnsubscribe(topic))) {
-        log.debug(`MQTT unsubscribe already claimed for topic="${topic}"; skipping`);
+    if (!(await topicActivity.tryClaimUnsubscribe(mqttTopic))) {
+        log.debug(`MQTT unsubscribe already claimed for topic="${mqttTopic}"; skipping`);
         return;
     }
 
-    await topicActivity.markInactive(topic);
-    log.info(`no active subscriptions for topic: ${topic}`);
-    await publishUnsubscribe("" + topic);
+    await topicActivity.markInactive(mqttTopic);
+    log.info(`no active subscriptions for topic: ${mqttTopic}`);
+    await publishUnsubscribe(mqttTopic);
 }
 
 module.exports = { maybeUnsubscribeTopic };

@@ -34,6 +34,7 @@ const subscriptionCache = require('../helpers/cache/subscriptions');
 const { log } = require('../settings');
 const { maybeUnsubscribeTopic } = require('../helpers/mqtt/lifecycle');
 const { publishRefreshTopic } = require('../helpers/cache/invalidation');
+const { mqttTopicKey } = require('../helpers/topic_key');
 const { normalizeCallbackUrl, assertCallbackTargetAllowed } = require('../helpers/security/callback_policy');
 
 let unsubscribe = async function (topic_url, topic, callback) {
@@ -81,15 +82,16 @@ let unsubscribe = async function (topic_url, topic, callback) {
         }
     }).then(async () => {
         await db.deleteSubscription(topic, callback);
-        await subscriptionCache.refreshTopic(topic);
-        await publishRefreshTopic(topic);
+        const mqttTopic = mqttTopicKey(topic);
+        await subscriptionCache.refreshTopic(mqttTopic);
+        await publishRefreshTopic(mqttTopic);
 
         // If there are no more subscriptions for the topic, unsubscribe the topic
         let num_subscriptions = await db.numSubscriptions(topic);
         log.debug(`number of subscriptions after unsubscribe for topic: ${topic}: ${num_subscriptions}`);
         if (num_subscriptions === 0) {
-            log.info('unsubscribing topic: ' + topic);
-            await maybeUnsubscribeTopic(topic);
+            log.info('unsubscribing topic: ' + mqttTopic);
+            await maybeUnsubscribeTopic(mqttTopic);
         }
     }).catch(error => {
         // Validation of intent failed => subscription remains unchanged

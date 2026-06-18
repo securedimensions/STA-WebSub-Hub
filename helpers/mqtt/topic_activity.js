@@ -8,7 +8,7 @@ Copyright (c) 2024 Secure Dimensions
 
 const { createConnection } = require("../queue/connection");
 const db = require("../db");
-const { normalizeTopicKey, topicFromDb } = require("../topic_key");
+const { topicFromDb, mqttTopicKey } = require("../topic_key");
 const { log } = require("../../settings");
 
 const ACTIVE_KEY = "hub:mqtt:active-topics";
@@ -25,7 +25,7 @@ function getRedis() {
 }
 
 function key(topic) {
-    return normalizeTopicKey(topic);
+    return mqttTopicKey(topic);
 }
 
 function unsubClaimKey(topic) {
@@ -58,16 +58,22 @@ async function tryClaimUnsubscribe(topic) {
 
 async function syncActiveFromDb() {
     const rows = await db.loadAllSubscriptions();
-    const topics = [...new Set(rows.map((row) => key(topicFromDb(row.topic))))];
+    const active = new Set(rows.map((row) => key(topicFromDb(row.topic))));
     const client = getRedis();
+    const existing = await client.smembers(ACTIVE_KEY);
+    const existingSet = new Set(existing);
+    const toRemove = existing.filter((topic) => !active.has(topic));
+    const toAdd = [...active].filter((topic) => !existingSet.has(topic));
 
-    await client.del(ACTIVE_KEY);
-    if (topics.length > 0) {
-        await client.sadd(ACTIVE_KEY, ...topics);
+    if (toRemove.length > 0) {
+        await client.srem(ACTIVE_KEY, ...toRemove);
+    }
+    if (toAdd.length > 0) {
+        await client.sadd(ACTIVE_KEY, ...toAdd);
     }
 
-    log.info(`synced ${topics.length} active MQTT topic(s) from database`);
-    return topics;
+    log.info(`synced ${active.size} active MQTT topic(s) from database`);
+    return [...active];
 }
 
 module.exports = {

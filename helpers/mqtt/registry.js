@@ -7,13 +7,13 @@ Copyright (c) 2024 Secure Dimensions
 "use strict";
 
 const { log } = require("../../settings");
-const { normalizeTopicKey } = require("../topic_key");
+const { mqttTopicKey } = require("../topic_key");
 
 /** topic key -> { source, qos, subscribedAt } */
 const subscribed = new Map();
 
 function recordSubscribe(topic, { source, err, granted }) {
-    const key = normalizeTopicKey(topic);
+    const key = mqttTopicKey(topic);
     if (err) {
         log.error(`MQTT subscribe failed (${source}): topic="${key}": ${err.message}`);
         return false;
@@ -36,7 +36,7 @@ function recordSubscribe(topic, { source, err, granted }) {
 }
 
 function recordUnsubscribe(topic, { source, err }) {
-    const key = normalizeTopicKey(topic);
+    const key = mqttTopicKey(topic);
     if (err) {
         log.error(`MQTT unsubscribe failed (${source}): topic="${key}": ${err.message}`);
         return false;
@@ -48,7 +48,7 @@ function recordUnsubscribe(topic, { source, err }) {
 }
 
 function isSubscribed(topic) {
-    return subscribed.has(normalizeTopicKey(topic));
+    return subscribed.has(mqttTopicKey(topic));
 }
 
 function snapshot() {
