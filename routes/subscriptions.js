@@ -32,7 +32,7 @@ const router = express.Router();
 const subscribe = require('./subscribe');
 const unsubscribe = require('./unsubscribe');
 const subscriptionEvents = require('../helpers/subscription_events');
-const { mqttTopicKey } = require('../helpers/topic_key');
+const { mqttTopicKey, hubRelativeTopicFromUrl } = require('../helpers/topic_key');
 
 const { validateAndAuthorizeCallback } = require('../helpers/security/callback_policy');
 
@@ -92,20 +92,9 @@ router.post('/subscriptions', async function (request, response, next) {
 		return response.status(400).contentType('text').send('`hub.topic` refers to unsupported SensorThings service');
 	}
 
-	let root_url = new url.URL(config.sta.root_url);
-	let root_path = root_url.pathname;
-	log.debug("root_path: " + root_path);
-
 	let topic_url = new url.URL(topic);
-	let topic_path = topic_url.pathname;
-	log.debug("topic_path: " + topic_path);
-	let topic_query = topic_url.search;
-	log.debug("topic_query: " + topic_query);
 
-	topic = topic_path.substring(root_path.length);
-	if (topic_query !== null) {
-		topic += topic_query;
-	}
+	topic = hubRelativeTopicFromUrl(topic_url);
 	log.debug("topic: " + topic);
 
 	// process lease_seconds

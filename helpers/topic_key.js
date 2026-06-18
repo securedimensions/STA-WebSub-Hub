@@ -20,19 +20,33 @@ function staPathPrefix() {
 }
 
 /**
+ * Hub-relative topic from a full hub.topic URL (path after STA_ROOT_URL + query).
+ */
+function hubRelativeTopicFromUrl(fullTopicUrl) {
+    const topicUrl = typeof fullTopicUrl === "string" ? new URL(fullTopicUrl) : fullTopicUrl;
+    const prefix = staPathPrefix();
+    let path = topicUrl.pathname.replace(/^\/+/, "");
+
+    if (prefix !== "") {
+        const prefixed = `${prefix}/`;
+        if (path === prefix) {
+            path = "";
+        } else if (path.startsWith(prefixed)) {
+            path = path.slice(prefixed.length);
+        }
+    }
+
+    path = path.replace(/^\/+/, "");
+    return path + (topicUrl.search || "");
+}
+
+/**
  * Map a hub-relative topic (from hub.topic URL parsing) to the MQTT topic
- * string the STA broker publishes (e.g. Observations → v1.1/Observations).
+ * string the STA broker publishes (e.g. v1.1/Observations). The HTTP path
+ * segment of STA_ROOT_URL (e.g. staplustest) is never part of the MQTT topic.
  */
 function mqttTopicKey(topic) {
-    const canonical = normalizeTopicKey(topic).replace(/^\/+/, "");
-    const prefix = staPathPrefix();
-    if (prefix === "") {
-        return canonical;
-    }
-    if (canonical === prefix || canonical.startsWith(`${prefix}/`)) {
-        return canonical;
-    }
-    return `${prefix}/${canonical}`;
+    return hubRelativeTopicKey(topic);
 }
 
 /** Strip the STA root path prefix from an MQTT topic when present. */
@@ -75,6 +89,7 @@ function topicFromDb(rowTopic) {
 
 module.exports = {
     normalizeTopicKey,
+    hubRelativeTopicFromUrl,
     mqttTopicKey,
     hubRelativeTopicKey,
     escapeTopicForDb,
