@@ -9,8 +9,10 @@ Copyright (c) 2024 Secure Dimensions
 const subscriptionCache = require("./helpers/cache/subscriptions");
 const { startInvalidationListener } = require("./helpers/cache/invalidation");
 const { startWorker, stopWorker, getWorkerStats } = require("./helpers/queue/worker");
+const { getQueueStats } = require("./helpers/queue/stats");
 const circuit = require("./helpers/delivery/circuit");
 const metrics = require("./helpers/metrics");
+const throughput = require("./helpers/throughput");
 const { startOpsServer } = require("./helpers/ops/server");
 const { log } = require("./settings");
 
@@ -30,12 +32,23 @@ async function main() {
             role: "delivery",
             checks: { worker: true },
         }),
-        getMetrics: async () => ({
-            role: "delivery",
-            at: new Date().toISOString(),
-            process: getWorkerStats(),
-            circuitsOpen: circuit.getOpenCircuits(),
-        }),
+        getMetrics: async () => {
+            const [globalThroughput, queue] = await Promise.all([
+                throughput.getGlobalSnapshot(),
+                getQueueStats(),
+            ]);
+            return {
+                role: "delivery",
+                at: new Date().toISOString(),
+                queue,
+                throughput: {
+                    ...globalThroughput,
+                    local: throughput.getLocalSnapshot(),
+                },
+                process: getWorkerStats(),
+                circuitsOpen: circuit.getOpenCircuits(),
+            };
+        },
     });
 
     log.info("hub delivery process ready");

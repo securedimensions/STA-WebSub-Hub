@@ -10,6 +10,7 @@ const crypto = require("crypto");
 const { Queue } = require("bullmq");
 const { createConnection } = require("./connection");
 const metrics = require("../metrics");
+const throughput = require("../throughput");
 const { config, log } = require("../../settings");
 
 let queue = null;
@@ -47,6 +48,7 @@ async function enqueueNotification(topic, payload) {
     );
 
     metrics.inc("enqueued");
+    throughput.recordEnqueued();
 }
 
 module.exports = { enqueueNotification, getQueue };

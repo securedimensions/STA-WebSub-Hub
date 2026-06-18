@@ -49,11 +49,11 @@ services:
       - "REDIS_URL=${REDIS_URL:-redis://host.docker.internal:6379}"
       - "HUB_MODE=ingest"
       - "HUB_STATS_INTERVAL_MS=1000"
-      - "HUB_OPS_PORT=4001"
+      - "HUB_OPS_PORT=${HUB_INGEST_OPS_PORT:-4001}"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
-      - "4001:4001"
+      - "${HUB_INGEST_OPS_PORT:-4001}:${HUB_INGEST_OPS_PORT:-4001}"
 
   sta-websub-hub-delivery:
     build:
@@ -70,11 +70,11 @@ services:
       - "REDIS_URL=${REDIS_URL:-redis://host.docker.internal:6379}"
       - "HUB_MODE=delivery"
       - "HUB_STATS_INTERVAL_MS=1000"
-      - "HUB_OPS_PORT=4002"
+      - "HUB_OPS_PORT=${HUB_DELIVERY_OPS_PORT:-4002}"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
-      - "4002:4002"
+      - "${HUB_DELIVERY_OPS_PORT:-4002}:${HUB_DELIVERY_OPS_PORT:-4002}"
 
   sta-websub-hub-cleanup:
     build:
