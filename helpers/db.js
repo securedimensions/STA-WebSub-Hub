@@ -27,6 +27,11 @@ SOFTWARE.
 const querystring = require('querystring');
 const { Pool } = require('pg');
 const { config, log } = require('../settings');
+const {
+    escapeTopicForDb,
+    topicDbLookupKeys,
+    topicFromDb,
+} = require('./topic_key');
 
 const subscription_state = Object.freeze({
     ACTIVE: "active",
@@ -77,29 +82,29 @@ let clearAll = async function () {
 }
 
 let numSubscriptions = async function (topic) {
-    topic = querystring.escape(topic);
+    const topicKeys = topicDbLookupKeys(topic);
     // topic is not enforced unique in the DB schema, so count across all matching topic rows
-    let sql_query = `SELECT count(*)::int from subscriptions WHERE topic_id IN (SELECT id FROM topics WHERE topic = $1)`;
-    let sql_values = [topic];
+    let sql_query = `SELECT count(*)::int from subscriptions WHERE topic_id IN (SELECT id FROM topics WHERE topic = ANY($1::text[]))`;
+    let sql_values = [topicKeys];
 
     let result = await pool.query(sql_query, sql_values);
     return result.rows[0].count;
 }
 
 let getSubscriptions = async function (topic) {
-    topic = querystring.escape(topic);
+    const topicKeys = topicDbLookupKeys(topic);
     const sql_query = `
         SELECT s.id, s.callback, s.secret, s.duration, s.status, s.topic_id
         FROM subscriptions s
         JOIN topics t ON t.id = s.topic_id
-        WHERE t.topic = $1
+        WHERE t.topic = ANY($1::text[])
           AND (s.duration IS NULL OR s.duration >= $2)`;
     const now = Math.round(Date.now() / 1000);
-    const sql_values = [topic, now];
+    const sql_values = [topicKeys, now];
 
     const result = await pool.query(sql_query, sql_values);
     if (result.rowCount === 0) {
-        log.debug('topic not found: ' + topic);
+        log.debug(`no active subscriptions for topic: ${topicDbLookupKeys(topic).join(" | ")}`);
         return [];
     }
 
@@ -108,7 +113,7 @@ let getSubscriptions = async function (topic) {
 
 let insertSubscription = async function (topic_url, topic, callback, lease_seconds, secret) {
     topic_url = querystring.escape(topic_url);
-    topic = querystring.escape(topic);
+    topic = escapeTopicForDb(topic);
     const client = await pool.connect()
 
     try {
@@ -233,14 +238,14 @@ let disableSubscription = async function (callback) {
 }
 
 let deleteSubscription = async function (topic, callback) {
-    topic = querystring.escape(topic);
+    const topicKeys = topicDbLookupKeys(topic);
     const client = await pool.connect()
 
     try {
         await client.query('BEGIN')
         // topic is not enforced unique in the DB schema, so delete across all matching topic rows
-        const sql_query = 'DELETE FROM subscriptions WHERE topic_id IN (SELECT id from topics WHERE topic = $1) AND callback = $2';
-        const sql_values = [topic, callback];
+        const sql_query = 'DELETE FROM subscriptions WHERE topic_id IN (SELECT id from topics WHERE topic = ANY($1::text[])) AND callback = $2';
+        const sql_values = [topicKeys, callback];
         client.query(sql_query, sql_values);
         await client.query('COMMIT')
     } catch (e) {
@@ -263,7 +268,7 @@ let deleteExpiredSubscriptions = async function () {
         RETURNING t.topic`;
     const result = await pool.query(sql_query, [now]);
     const topics = [
-        ...new Set(result.rows.map((row) => querystring.unescape(row.topic))),
+        ...new Set(result.rows.map((row) => topicFromDb(row.topic))),
     ];
     return { deleted: result.rowCount, topics };
 }
