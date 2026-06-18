@@ -10,7 +10,7 @@ require("dotenv").config();
 
 const db = require("../helpers/db");
 const { publishReload } = require("../helpers/cache/invalidation");
-const { publishUnsubscribe } = require("../helpers/mqtt/commands");
+const { maybeUnsubscribeTopic } = require("../helpers/mqtt/lifecycle");
 const { log } = require("../settings");
 
 async function main() {
@@ -21,7 +21,7 @@ async function main() {
     for (const topic of topics) {
         if ((await db.numSubscriptions(topic)) === 0) {
             log.info(`no subscriptions remain for topic: ${topic}`);
-            await publishUnsubscribe("" + topic);
+            await maybeUnsubscribeTopic(topic);
         }
     }
 

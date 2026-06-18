@@ -15,6 +15,7 @@ const state = {
     postsSkippedCircuit: 0,
     enqueued: 0,
     enqueueRejected: 0,
+    enqueueDroppedNoSubs: 0,
 };
 
 function setRole(role) {

@@ -12,6 +12,12 @@ const { log } = require("../../settings");
 
 const byTopic = new Map();
 
+let onTopicBecameInactive = null;
+
+function setOnTopicBecameInactive(handler) {
+    onTopicBecameInactive = handler;
+}
+
 function cacheKey(topic) {
     return normalizeTopicKey(topic);
 }
@@ -103,6 +109,11 @@ async function getActive(topic) {
             const compacted = current.filter((sub) => isActiveSub(sub, seconds));
             if (compacted.length === 0) {
                 byTopic.delete(key);
+                if (current.length > 0 && onTopicBecameInactive !== null) {
+                    onTopicBecameInactive(key).catch((err) => {
+                        log.error(`topic inactive handler failed for ${key}: ${err.message}`);
+                    });
+                }
             } else {
                 byTopic.set(key, compacted);
             }
@@ -150,4 +161,5 @@ module.exports = {
     getActive,
     updateStatus,
     remove,
+    setOnTopicBecameInactive,
 };

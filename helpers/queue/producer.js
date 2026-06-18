@@ -9,6 +9,7 @@ Copyright (c) 2024 Secure Dimensions
 const crypto = require("crypto");
 const { Queue } = require("bullmq");
 const { createConnection } = require("./connection");
+const topicActivity = require("../mqtt/topic_activity");
 const metrics = require("../metrics");
 const throughput = require("../throughput");
 const { config, log } = require("../../settings");
@@ -23,6 +24,12 @@ function getQueue() {
 }
 
 async function enqueueNotification(topic, payload) {
+    if (!(await topicActivity.isActive(topic))) {
+        log.debug(`dropping notification for topic without active subscriptions: "${topic}"`);
+        metrics.inc("enqueueDroppedNoSubs");
+        return;
+    }
+
     const notificationQueue = getQueue();
     const waiting = await notificationQueue.getWaitingCount();
 

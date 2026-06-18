@@ -32,6 +32,7 @@ const db = require('../helpers/db');
 const subscriptionCache = require('../helpers/cache/subscriptions');
 const { publishSubscribe } = require('../helpers/mqtt/commands');
 const { publishRefreshTopic } = require('../helpers/cache/invalidation');
+const topicActivity = require('../helpers/mqtt/topic_activity');
 const { config, log } = require('../settings');
 const { normalizeCallbackUrl, assertCallbackTargetAllowed } = require('../helpers/security/callback_policy');
 
@@ -184,6 +185,7 @@ let subscribe = async function (topic_url, topic, callback, lease_seconds = conf
             await subscriptionCache.refreshTopic(topic);
             await publishRefreshTopic(topic);
 
+            await topicActivity.markActive(topic);
             log.info(`requesting MQTT subscribe for topic="${topic}"`);
             await publishSubscribe("" + topic);
 

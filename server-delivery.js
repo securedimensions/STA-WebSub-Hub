@@ -8,6 +8,8 @@ Copyright (c) 2024 Secure Dimensions
 
 const subscriptionCache = require("./helpers/cache/subscriptions");
 const { startInvalidationListener } = require("./helpers/cache/invalidation");
+const { maybeUnsubscribeTopic } = require("./helpers/mqtt/lifecycle");
+const topicActivity = require("./helpers/mqtt/topic_activity");
 const { startWorker, stopWorker, getWorkerStats } = require("./helpers/queue/worker");
 const { getQueueStats } = require("./helpers/queue/stats");
 const circuit = require("./helpers/delivery/circuit");
@@ -22,6 +24,8 @@ let opsServer = null;
 
 async function main() {
     await subscriptionCache.load();
+    await topicActivity.syncActiveFromDb();
+    subscriptionCache.setOnTopicBecameInactive(maybeUnsubscribeTopic);
     await startInvalidationListener();
     startWorker();
 

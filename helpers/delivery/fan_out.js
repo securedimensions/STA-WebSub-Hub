@@ -8,33 +8,13 @@ Copyright (c) 2024 Secure Dimensions
 
 const db = require("../db");
 const subscriptionCache = require("../cache/subscriptions");
-const { publishUnsubscribe } = require("../mqtt/commands");
+const { maybeUnsubscribeTopic } = require("../mqtt/lifecycle");
 const { buildWebSubHeaders } = require("./signature");
 const httpClient = require("./http_client");
 const circuit = require("./circuit");
 const limiter = require("./limiter");
 const metrics = require("../metrics");
 const { config, log } = require("../../settings");
-
-async function maybeUnsubscribeTopic(topic) {
-    if ((await subscriptionCache.getActive(topic)).length > 0) {
-        return;
-    }
-
-    // Cache may lag behind a subscribe still in flight; confirm with DB before
-    // tearing down MQTT (stale queue jobs can otherwise undo a re-subscribe).
-    const dbSubs = await db.getSubscriptions(topic);
-    if (dbSubs.length > 0) {
-        log.debug(
-            `cache empty but database has active subscription(s) for topic="${topic}"; refreshing cache`
-        );
-        await subscriptionCache.refreshTopic(topic);
-        return;
-    }
-
-    log.info(`no active subscriptions for topic: ${topic}`);
-    await publishUnsubscribe("" + topic);
-}
 
 async function deliverToSubscriber({ notificationId, topic, payload, subscription }) {
     if (circuit.isOpen(subscription.callback)) {
@@ -104,7 +84,7 @@ async function processNotification(data) {
     log.debug(`no of subscriptions for ${topic}: ${subs.length}`);
 
     if (subs.length === 0) {
-        log.info(`no cached subscriptions for topic="${topic}"; skipping delivery`);
+        log.debug(`no cached subscriptions for topic="${topic}"; skipping delivery`);
         await maybeUnsubscribeTopic(topic);
         return;
     }

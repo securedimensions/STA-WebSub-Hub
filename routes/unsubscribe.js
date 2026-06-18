@@ -32,7 +32,7 @@ const crypto = require("crypto");
 const db = require('../helpers/db');
 const subscriptionCache = require('../helpers/cache/subscriptions');
 const { log } = require('../settings');
-const { publishUnsubscribe } = require('../helpers/mqtt/commands');
+const { maybeUnsubscribeTopic } = require('../helpers/mqtt/lifecycle');
 const { publishRefreshTopic } = require('../helpers/cache/invalidation');
 const { normalizeCallbackUrl, assertCallbackTargetAllowed } = require('../helpers/security/callback_policy');
 
@@ -89,7 +89,7 @@ let unsubscribe = async function (topic_url, topic, callback) {
         log.debug(`number of subscriptions after unsubscribe for topic: ${topic}: ${num_subscriptions}`);
         if (num_subscriptions === 0) {
             log.info('unsubscribing topic: ' + topic);
-            await publishUnsubscribe('' + topic);
+            await maybeUnsubscribeTopic(topic);
         }
     }).catch(error => {
         // Validation of intent failed => subscription remains unchanged

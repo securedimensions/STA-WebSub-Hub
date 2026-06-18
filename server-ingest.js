@@ -9,10 +9,7 @@ Copyright (c) 2024 Secure Dimensions
 const mqtt_client = require("./helpers/mqtt_client");
 const { enqueueNotification } = require("./helpers/queue/producer");
 const { config, log } = require("./settings");
-const { pool } = require("./helpers/db");
-const { Query } = require("pg");
-const assert = require("assert");
-const { topicFromDb } = require("./helpers/topic_key");
+const topicActivity = require("./helpers/mqtt/topic_activity");
 const { startMqttCommandListener } = require("./helpers/mqtt/commands");
 const mqttRegistry = require("./helpers/mqtt/registry");
 const { getQueue } = require("./helpers/queue/producer");
@@ -40,29 +37,13 @@ function unsubscribeMqttTopic(topic, source) {
     });
 }
 
-async function subscribeToAllTopicsFromDb() {
-    const client = await pool.connect();
-    const query = new Query("SELECT topic from topics");
-    const result = client.query(query);
-    assert.equal(query, result);
-
-    let topicCount = 0;
-
-    query
-        .on("row", (row) => {
-            topicCount += 1;
-            const topic = topicFromDb(row.topic);
-            log.debug(`DB topic row raw="${row.topic}" mqtt="${topic}"`);
-            subscribeMqttTopic(topic, "startup-db");
-        })
-        .on("end", () => {
-            client.release();
-            log.info(`Ingest ready! loaded ${topicCount} topic(s) from database for MQTT subscribe`);
-        })
-        .on("error", (error) => {
-            client.release();
-            log.error("init MQTT subscriptions error: ", error);
-        });
+async function subscribeToActiveTopicsFromDb() {
+    const topics = await topicActivity.syncActiveFromDb();
+    for (const topic of topics) {
+        log.debug(`active subscription topic mqtt="${topic}"`);
+        subscribeMqttTopic(topic, "startup-db");
+    }
+    log.info(`Ingest ready! subscribed to ${topics.length} topic(s) with active subscriptions`);
 }
 
 async function startCommandListener() {
@@ -102,7 +83,7 @@ mqtt_client
     .on("connect", async () => {
         log.info(`Connected to MQTT broker ${config.sta.mqtt_url} (publisher ${config.sta.root_url})`);
         await startCommandListener();
-        await subscribeToAllTopicsFromDb();
+        await subscribeToActiveTopicsFromDb();
         startQueueStatsLogger();
     })
     .on("reconnect", () => {
