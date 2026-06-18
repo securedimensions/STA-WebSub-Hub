@@ -6,8 +6,8 @@ Copyright (c) 2024 Secure Dimensions
 
 "use strict";
 
-const querystring = require("querystring");
 const db = require("../db");
+const { topicFromDb, normalizeTopicKey } = require("../topic_key");
 const { log } = require("../../settings");
 
 const byTopic = new Map();
@@ -47,7 +47,7 @@ async function load() {
     await withWriteLock(async () => {
         byTopic.clear();
         for (const row of rows) {
-            const topic = querystring.unescape(row.topic);
+            const topic = topicFromDb(row.topic);
             upsertInMemory(topic, row);
         }
     });
@@ -55,7 +55,7 @@ async function load() {
 }
 
 async function refreshTopic(topic) {
-    const subs = await db.getSubscriptions(topic);
+    const subs = await db.getSubscriptions(normalizeTopicKey(topic));
     await withWriteLock(async () => {
         if (subs.length === 0) {
             byTopic.delete(topic);

@@ -12,7 +12,7 @@ const { config, log } = require("./settings");
 const { pool } = require("./helpers/db");
 const { Query } = require("pg");
 const assert = require("assert");
-const querystring = require("querystring");
+const { topicFromDb } = require("./helpers/topic_key");
 const { startMqttCommandListener } = require("./helpers/mqtt/commands");
 const { getQueue } = require("./helpers/queue/producer");
 const { getQueueStats } = require("./helpers/queue/stats");
@@ -33,7 +33,7 @@ async function subscribeToAllTopicsFromDb() {
 
     query
         .on("row", (row) => {
-            const topic = querystring.unescape(row.topic);
+            const topic = topicFromDb(row.topic);
             log.info("Subscribing to MQTT topic: ", topic);
             mqtt_client.subscribe(topic, (err, granted) => {
                 if (err !== null) log.error(err);
