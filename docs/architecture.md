@@ -219,12 +219,19 @@ Example at **R = 1,000/s**, **S = 3**: ~3,000 HTTP POSTs/s spread across workers
 
 ### 6.7 Operational visibility
 
-| Endpoint | Process | Information |
-|----------|---------|-------------|
-| `GET /ops/health` | hub-api | PostgreSQL + Redis connectivity |
-| `GET /ops/metrics` | hub-api | Queue depths (waiting, active, failed, delayed) |
-| `GET /health`, `GET /metrics` | hub-ingest (`HUB_OPS_PORT`) | MQTT connected, queue stats, enqueue counters |
-| `GET /health`, `GET /metrics` | hub-delivery (`HUB_OPS_PORT`) | Job counters, open circuits |
+Ops endpoints are documented in [`README.md`](../README.md#operations). Summary:
+
+| Endpoint | Process | Port / path | Primary signals |
+|----------|---------|-------------|-----------------|
+| `GET /ops/health` | hub-api | `HUB_PORT` (default 4000) | PostgreSQL + Redis |
+| `GET /ops/metrics` | hub-api | `/ops/metrics` | Queue depths, cross-process `throughput`, subscription lifecycle |
+| `GET /ops/failed`, `POST /ops/failed/*` | hub-api | `/ops/failed` | DLQ inspect, retry, purge |
+| `GET /health`, `GET /metrics` | hub-ingest | `HUB_OPS_PORT` (default 4001) | MQTT connection, subscribed topics, enqueue throughput |
+| `GET /health`, `GET /metrics` | hub-delivery | `HUB_OPS_PORT` (default 4002) | Delivery counters, open circuits, job throughput |
+
+**Throughput semantics:** `throughput.notificationsPerSecond` and `throughput.jobsCompletedPerSecond` both mean **queue jobs completed per second** (one per MQTT message). They do **not** count HTTP POSTs to subscribers. POST volume is in `delivery.postsSucceeded` on the delivery metrics response. Fields `*InWindow` are totals over the rolling window (`HUB_METRICS_THROUGHPUT_WINDOW_MS`, default 10 s), not per-second rates.
+
+**Subscription activation:** the API metrics endpoint exposes `subscriptionLifecycle.recent` with `activationDelayMs` and validation timings, separate from steady-state throughput.
 
 Set `HUB_STATS_INTERVAL_MS` to log queue and delivery counters periodically.
 
