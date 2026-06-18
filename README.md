@@ -81,14 +81,17 @@ Some environment variables control the basic behavior of the Hub by overwriting 
 * **DELIVERY_CIRCUIT_WINDOW_MS**: Sliding window for circuit failures. Default: `60000`
 * **DELIVERY_CIRCUIT_OPEN_MS**: How long a circuit stays open. Default: `30000`
 * **HUB_STATS_INTERVAL_MS**: Log queue/delivery counters every N ms (0 = disabled)
-* **HUB_OPS_PORT**: Health/metrics HTTP port for ingest/delivery processes (api uses `/ops` on `HUB_PORT`)
+* **HUB_INGEST_OPS_PORT** / **HUB_DELIVERY_OPS_PORT**: Health/metrics HTTP ports for ingest/delivery in Docker (mapped to `HUB_OPS_PORT` per container; API uses `/ops` on `HUB_PORT`)
+* **HUB_METRICS_THROUGHPUT_WINDOW_MS**: Rolling window for throughput on `/ops/metrics` (default 10000 ms)
 
 ## Operations
 
 ### Health and metrics
-* **API** (`HUB_MODE=api`): `GET /ops/health`, `GET /ops/metrics`
-* **Ingest** (`HUB_OPS_PORT`, default 4001 in docker): `GET /health`, `GET /metrics`
-* **Delivery** (`HUB_OPS_PORT`, default 4002 in docker): `GET /health`, `GET /metrics` (includes open circuits)
+* **API** (`HUB_MODE=api`): `GET /ops/health`, `GET /ops/metrics` (queue depths, `throughput.enqueuedPerSecond` / `throughput.deliveredPerSecond` over rolling window)
+* **Ingest** (`HUB_INGEST_OPS_PORT`, default 4001): `GET /health`, `GET /metrics`
+* **Delivery** (`HUB_DELIVERY_OPS_PORT`, default 4002): `GET /health`, `GET /metrics` (includes open circuits)
+
+`queue.completedRetained` is **not** a lifetime total — BullMQ only keeps the newest `QUEUE_REMOVE_ON_COMPLETE_COUNT` completed jobs in Redis, so this value plateaus at that cap.
 
 ### Failed jobs (DLQ)
 BullMQ retains failed jobs (`removeOnFail: false`). Inspect and retry:

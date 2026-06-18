@@ -32,6 +32,8 @@ services:
       interval: 10s
       timeout: 3s
       retries: 3
+    networks:
+      - WebSubHub
   sta-websub-hub-db:
     image: postgres:14.2
     restart: always
@@ -43,10 +45,12 @@ services:
       - ./create.sql:/docker-entrypoint-initdb.d/create.sql
       - postgres_data:/var/lib/postgresql/data/
     healthcheck:
-      test: ["CMD-SHELL", "sh -c 'pg_isready -h ${POSTGRES_HOST} -p ${POSTGRES_PORT} -U ${POSTGRES_USER} -d ${POSTGRES_DB}'"]
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
       interval: 10s
       timeout: 3s
       retries: 3
+    networks:
+      - WebSubHub
   sta-websub-hub-api:
     build: 
       context: ..
@@ -71,6 +75,8 @@ services:
         condition: service_healthy
       sta-websub-hub-db:
         condition: service_healthy
+    networks:
+      - WebSubHub
   sta-websub-hub-ingest:
     build: 
       context: ..
@@ -85,12 +91,14 @@ services:
       - "REDIS_URL=redis://sta-websub-hub-redis:6379"
       - "HUB_MODE=ingest"
       - "HUB_STATS_INTERVAL_MS=1000"
-      - "HUB_OPS_PORT=4001"
+      - "HUB_OPS_PORT=${HUB_INGEST_OPS_PORT:-4001}"
     depends_on:
       sta-websub-hub-redis:
         condition: service_healthy
       sta-websub-hub-db:
         condition: service_healthy
+    networks:
+      - WebSubHub
   sta-websub-hub-delivery:
     build: 
       context: ..
@@ -105,12 +113,14 @@ services:
       - "REDIS_URL=redis://sta-websub-hub-redis:6379"
       - "HUB_MODE=delivery"
       - "HUB_STATS_INTERVAL_MS=1000"
-      - "HUB_OPS_PORT=4002"
+      - "HUB_OPS_PORT=${HUB_DELIVERY_OPS_PORT:-4002}"
     depends_on:
       sta-websub-hub-redis:
         condition: service_healthy
       sta-websub-hub-db:
         condition: service_healthy
+    networks:
+      - WebSubHub
   sta-websub-hub-cleanup:
     build:
       context: ..
@@ -128,6 +138,8 @@ services:
         condition: service_healthy
       sta-websub-hub-db:
         condition: service_healthy
+    networks:
+      - WebSubHub
 volumes:
   postgres_data:
 networks:

@@ -11,6 +11,7 @@ const { createConnection } = require("./connection");
 const { config, log } = require("../../settings");
 const { processNotification } = require("../delivery/fan_out");
 const metrics = require("../metrics");
+const throughput = require("../throughput");
 
 let worker = null;
 let statsTimer = null;
@@ -50,6 +51,7 @@ function startWorker() {
 
     worker.on("completed", () => {
         metrics.inc("jobsCompleted");
+        throughput.recordDelivered();
     });
 
     worker.on("error", (err) => {

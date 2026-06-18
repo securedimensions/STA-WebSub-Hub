@@ -11,6 +11,7 @@ const { pool } = require("../helpers/db");
 const { getQueueStats } = require("../helpers/queue/stats");
 const { listFailedJobs, retryFailedJob } = require("../helpers/queue/failed");
 const metrics = require("../helpers/metrics");
+const throughput = require("../helpers/throughput");
 const { createConnection } = require("../helpers/queue/connection");
 
 const router = express.Router();
@@ -49,11 +50,15 @@ router.get("/health", async (req, res) => {
 });
 
 router.get("/metrics", async (req, res) => {
-    const queue = await getQueueStats();
+    const [queue, throughputStats] = await Promise.all([
+        getQueueStats(),
+        throughput.getGlobalSnapshot(),
+    ]);
     res.json({
         role: "api",
         at: new Date().toISOString(),
         queue,
+        throughput: throughputStats,
         process: metrics.snapshot(),
     });
 });
