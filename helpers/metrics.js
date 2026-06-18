@@ -16,6 +16,7 @@ const state = {
     enqueued: 0,
     enqueueRejected: 0,
     enqueueDroppedNoSubs: 0,
+    jobsSkippedNoSubs: 0,
 };
 
 function setRole(role) {

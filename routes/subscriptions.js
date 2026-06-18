@@ -31,6 +31,8 @@ const express = require('express');
 const router = express.Router();
 const subscribe = require('./subscribe');
 const unsubscribe = require('./unsubscribe');
+const subscriptionEvents = require('../helpers/subscription_events');
+const { mqttTopicKey } = require('../helpers/topic_key');
 
 const { validateAndAuthorizeCallback } = require('../helpers/security/callback_policy');
 
@@ -148,8 +150,16 @@ router.post('/subscriptions', async function (request, response, next) {
 
 	if (mode === 'subscribe') {
 		log.debug('subscribe()');
-		// async function that finishes some time later...
-		subscribe(topic_url, topic, callback, lease_seconds, secret);
+		const ctx = subscriptionEvents.beginSubscribe({
+			topic,
+			mqttTopic: mqttTopicKey(topic),
+			callback,
+			leaseSeconds: lease_seconds,
+		});
+		subscribe(topic_url, topic, callback, lease_seconds, secret, ctx);
+		subscriptionEvents.recordAccepted(ctx).catch((e) => {
+			log.debug(`subscription accepted event failed: ${e.message}`);
+		});
 	}
 	else {
 		log.debug('unsubscribe()');

@@ -12,6 +12,7 @@ const { getQueueStats } = require("../helpers/queue/stats");
 const { listFailedJobs, retryFailedJob, retryAllFailedJobs, purgeFailedJobs } = require("../helpers/queue/failed");
 const metrics = require("../helpers/metrics");
 const throughput = require("../helpers/throughput");
+const subscriptionEvents = require("../helpers/subscription_events");
 const { createConnection } = require("../helpers/queue/connection");
 
 const router = express.Router();
@@ -50,15 +51,20 @@ router.get("/health", async (req, res) => {
 });
 
 router.get("/metrics", async (req, res) => {
-    const [queue, throughputStats] = await Promise.all([
+    const [queue, throughputStats, recentSubscriptions] = await Promise.all([
         getQueueStats(),
         throughput.getGlobalSnapshot(),
+        subscriptionEvents.getRecent(20),
     ]);
     res.json({
         role: "api",
         at: new Date().toISOString(),
         queue,
         throughput: throughputStats,
+        subscriptionLifecycle: {
+            pendingIntentValidation: subscriptionEvents.getPendingCount(),
+            recent: recentSubscriptions,
+        },
         process: metrics.snapshot(),
     });
 });

@@ -34,6 +34,7 @@ const { publishSubscribe } = require('../helpers/mqtt/commands');
 const { publishRefreshTopic } = require('../helpers/cache/invalidation');
 const topicActivity = require('../helpers/mqtt/topic_activity');
 const { mqttTopicKey } = require('../helpers/topic_key');
+const subscriptionEvents = require('../helpers/subscription_events');
 const { config, log } = require('../settings');
 const { normalizeCallbackUrl, assertCallbackTargetAllowed } = require('../helpers/security/callback_policy');
 
@@ -53,13 +54,30 @@ function parseLink(data) {
     return parsed_data;
 }
 
-let subscribe = async function (topic_url, topic, callback, lease_seconds = config.hub.default_lease_seconds, secret = null) {
+let subscribe = async function (
+    topic_url,
+    topic,
+    callback,
+    lease_seconds = config.hub.default_lease_seconds,
+    secret = null,
+    ctx = null
+) {
+    if (ctx === null) {
+        ctx = subscriptionEvents.beginSubscribe({
+            topic,
+            mqttTopic: mqttTopicKey(topic),
+            callback,
+            leaseSeconds: lease_seconds,
+        });
+    }
+
     // callback already validated at API entry; re-check DNS target before any outbound request (DNS rebinding defense)
     try {
         const cb = normalizeCallbackUrl(callback);
         await assertCallbackTargetAllowed(cb);
     } catch (e) {
         log.error(`callback blocked by policy for ${topic_url} -> ${callback}: ${e.message}`);
+        await subscriptionEvents.recordFailed(ctx, { phase: "callback_policy", reason: e.message });
         return;
     }
 
@@ -67,6 +85,7 @@ let subscribe = async function (topic_url, topic, callback, lease_seconds = conf
     const url = new URL(topic, config.publisher.url).toString();
     log.info('Starting validation of intent with publisher: ', url);
     log.info('topic_url: ', topic_url.toString());
+    const publisherStart = Date.now();
     const status = await request(url, { method: 'HEAD' })
         .then(async (res) => {
             // result: { data: Buffer, res: Response }
@@ -124,7 +143,13 @@ let subscribe = async function (topic_url, topic, callback, lease_seconds = conf
             return false;
         });
 
+    const publisherMs = Date.now() - publisherStart;
+
     if (status == false) {
+        await subscriptionEvents.recordFailed(ctx, {
+            phase: "publisher",
+            reason: "publisher validation failed",
+        });
         return;
     }
 
@@ -143,8 +168,10 @@ let subscribe = async function (topic_url, topic, callback, lease_seconds = conf
         params['hub.secret'] = secret;
     }
     log.debug("params: ", params);
+    const intentStart = Date.now();
     request(callback, { method: 'GET', followRedirect: false, data: params })
         .then(async (res) => {
+            const intentMs = Date.now() - intentStart;
 
             // result: { data: Buffer, res: Response }
             log.debug('status: %s, body: %s, headers: %j', res.statusCode, res.data, res.headers);
@@ -153,10 +180,18 @@ let subscribe = async function (topic_url, topic, callback, lease_seconds = conf
             let charset = parseHttpHeader(res.headers['content-type'])['charset'];
             if (content_type !== 'text/plain') {
                 log.error("subscriber returned wrong content-type for validation of intent: " + content_type);
+                await subscriptionEvents.recordFailed(ctx, {
+                    phase: "intent",
+                    reason: `wrong content-type: ${content_type}`,
+                });
                 return;
             }
             if (charset.toLowerCase() !== 'utf-8') {
                 log.error("subscriber returned wrong encoding for validation of intent: " + charset);
+                await subscriptionEvents.recordFailed(ctx, {
+                    phase: "intent",
+                    reason: `wrong encoding: ${charset}`,
+                });
                 return;
             }
 
@@ -164,6 +199,10 @@ let subscribe = async function (topic_url, topic, callback, lease_seconds = conf
             log.debug(challenge_response);
             if (challenge_response !== challenge) {
                 log.error("subscriber returned mismatching challenge value");
+                await subscriptionEvents.recordFailed(ctx, {
+                    phase: "intent",
+                    reason: "challenge mismatch",
+                });
                 return;
             }
 
@@ -191,8 +230,14 @@ let subscribe = async function (topic_url, topic, callback, lease_seconds = conf
             log.info(`requesting MQTT subscribe for topic="${mqttTopic}"`);
             await publishSubscribe(mqttTopic);
 
-        }).catch(error => {
+            await subscriptionEvents.recordActivated(ctx, { publisherMs, intentMs });
+
+        }).catch(async (error) => {
             log.error(`validation of intent error for ${topic_url} -> ${callback}: ${error}`);
+            await subscriptionEvents.recordFailed(ctx, {
+                phase: "intent",
+                reason: error.message || String(error),
+            });
             if (typeof error.errors === 'array') {
                 error.errors.forEach(e => {
                     log.debug(e);

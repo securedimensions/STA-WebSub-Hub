@@ -15,6 +15,7 @@ const mqttRegistry = require("./helpers/mqtt/registry");
 const { getQueue } = require("./helpers/queue/producer");
 const { getQueueStats } = require("./helpers/queue/stats");
 const metrics = require("./helpers/metrics");
+const throughput = require("./helpers/throughput");
 const { startOpsServer } = require("./helpers/ops/server");
 
 metrics.setRole("ingest");
@@ -153,17 +154,27 @@ opsServer = startOpsServer({
         role: "ingest",
         checks: { mqtt: mqtt_client.connected === true },
     }),
-    getMetrics: async () => ({
-        role: "ingest",
-        at: new Date().toISOString(),
-        queue: await getQueueStats(),
-        mqtt: {
-            connected: mqtt_client.connected,
-            broker: config.sta.mqtt_url,
-            ...mqttRegistry.snapshot(),
-        },
-        process: metrics.snapshot(),
-    }),
+    getMetrics: async () => {
+        const [queue, globalThroughput] = await Promise.all([
+            getQueueStats(),
+            throughput.getGlobalSnapshot(),
+        ]);
+        return {
+            role: "ingest",
+            at: new Date().toISOString(),
+            queue,
+            throughput: {
+                ...globalThroughput,
+                local: throughput.getLocalSnapshot(),
+            },
+            mqtt: {
+                connected: mqtt_client.connected,
+                broker: config.sta.mqtt_url,
+                ...mqttRegistry.snapshot(),
+            },
+            process: metrics.snapshot(),
+        };
+    },
 });
 
 async function shutdown(signal) {

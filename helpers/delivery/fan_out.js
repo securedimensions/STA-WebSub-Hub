@@ -14,6 +14,7 @@ const httpClient = require("./http_client");
 const circuit = require("./circuit");
 const limiter = require("./limiter");
 const metrics = require("../metrics");
+const throughput = require("../throughput");
 const { config, log } = require("../../settings");
 
 async function deliverToSubscriber({ notificationId, topic, payload, subscription }) {
@@ -35,6 +36,7 @@ async function deliverToSubscriber({ notificationId, topic, payload, subscriptio
                 if (response.status >= 200 && response.status <= 299) {
                     circuit.recordSuccess(subscription.callback);
                     metrics.inc("postsSucceeded");
+                    throughput.recordPostSucceeded();
                     return;
                 }
 
@@ -45,6 +47,7 @@ async function deliverToSubscriber({ notificationId, topic, payload, subscriptio
                     await maybeUnsubscribeTopic(topic);
                     circuit.recordSuccess(subscription.callback);
                     metrics.inc("postsSucceeded");
+                    throughput.recordPostSucceeded();
                     return;
                 }
 
@@ -85,6 +88,7 @@ async function processNotification(data) {
 
     if (subs.length === 0) {
         log.debug(`no cached subscriptions for topic="${topic}"; skipping delivery`);
+        metrics.inc("jobsSkippedNoSubs");
         await maybeUnsubscribeTopic(topic);
         return;
     }

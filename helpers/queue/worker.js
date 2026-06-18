@@ -51,7 +51,7 @@ function startWorker() {
 
     worker.on("completed", () => {
         metrics.inc("jobsCompleted");
-        throughput.recordDelivered();
+        throughput.recordJobCompleted();
     });
 
     worker.on("error", (err) => {

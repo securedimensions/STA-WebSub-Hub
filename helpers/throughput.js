@@ -14,6 +14,9 @@ const REDIS_KEY_TTL_SECONDS = WINDOW_SECONDS + 5;
 
 const REDIS_PREFIX = {
     enqueued: "hub:throughput:enqueued",
+    jobsCompleted: "hub:throughput:jobs-completed",
+    postsSucceeded: "hub:throughput:posts-succeeded",
+    // Legacy alias written by older hubs until redeployed
     delivered: "hub:throughput:delivered",
 };
 
@@ -49,35 +52,40 @@ class SlidingWindow {
 
 const local = {
     enqueued: new SlidingWindow(),
-    delivered: new SlidingWindow(),
+    jobsCompleted: new SlidingWindow(),
+    postsSucceeded: new SlidingWindow(),
 };
 
 function recordLocal(kind, amount = 1) {
     local[kind]?.record(amount);
 }
 
-function emptySnapshot() {
-    return {
-        windowSeconds: WINDOW_SECONDS,
-        enqueuedPerSecond: 0,
-        deliveredPerSecond: 0,
-        notificationsPerSecond: 0,
-        enqueuedInWindow: 0,
-        deliveredInWindow: 0,
-    };
-}
-
 function withSnapshot(counts) {
     const enqueuedPerSecond = counts.enqueued.perSecond;
-    const deliveredPerSecond = counts.delivered.perSecond;
+    const jobsCompletedPerSecond = counts.jobsCompleted.perSecond;
+    const postsSucceededPerSecond = counts.postsSucceeded.perSecond;
+
     return {
         windowSeconds: WINDOW_SECONDS,
         enqueuedPerSecond,
-        deliveredPerSecond,
-        notificationsPerSecond: deliveredPerSecond,
+        jobsCompletedPerSecond,
+        postsSucceededPerSecond,
         enqueuedInWindow: counts.enqueued.count,
-        deliveredInWindow: counts.delivered.count,
+        jobsCompletedInWindow: counts.jobsCompleted.count,
+        postsSucceededInWindow: counts.postsSucceeded.count,
+        // Deprecated aliases (previously both mapped to queue job completion)
+        deliveredPerSecond: jobsCompletedPerSecond,
+        notificationsPerSecond: postsSucceededPerSecond,
+        deliveredInWindow: counts.jobsCompleted.count,
     };
+}
+
+function emptySnapshot() {
+    return withSnapshot({
+        enqueued: { count: 0, perSecond: 0 },
+        jobsCompleted: { count: 0, perSecond: 0 },
+        postsSucceeded: { count: 0, perSecond: 0 },
+    });
 }
 
 async function withRedis(fn) {
@@ -142,26 +150,38 @@ async function readRedisWindow(prefix) {
     return result || { count: 0, perSecond: 0 };
 }
 
+async function readRedisWindowMerged(prefixes) {
+    const parts = await Promise.all(prefixes.map((prefix) => readRedisWindow(prefix)));
+    const count = parts.reduce((sum, part) => sum + part.count, 0);
+    return {
+        count,
+        perSecond: count / WINDOW_SECONDS,
+    };
+}
+
 async function getGlobalSnapshot() {
-    const [enqueued, delivered] = await Promise.all([
+    const [enqueued, jobsCompleted, postsSucceeded] = await Promise.all([
         readRedisWindow(REDIS_PREFIX.enqueued),
-        readRedisWindow(REDIS_PREFIX.delivered),
+        readRedisWindowMerged([REDIS_PREFIX.jobsCompleted, REDIS_PREFIX.delivered]),
+        readRedisWindow(REDIS_PREFIX.postsSucceeded),
     ]);
 
-    return withSnapshot({ enqueued, delivered });
+    return withSnapshot({ enqueued, jobsCompleted, postsSucceeded });
 }
 
 function getLocalSnapshot() {
     return withSnapshot({
         enqueued: local.enqueued.snapshot(),
-        delivered: local.delivered.snapshot(),
+        jobsCompleted: local.jobsCompleted.snapshot(),
+        postsSucceeded: local.postsSucceeded.snapshot(),
     });
 }
 
 module.exports = {
     record,
     recordEnqueued: (amount = 1) => record("enqueued", amount),
-    recordDelivered: (amount = 1) => record("delivered", amount),
+    recordJobCompleted: (amount = 1) => record("jobsCompleted", amount),
+    recordPostSucceeded: (amount = 1) => record("postsSucceeded", amount),
     getGlobalSnapshot,
     getLocalSnapshot,
     emptySnapshot,
