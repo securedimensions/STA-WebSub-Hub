@@ -49,7 +49,7 @@ async function main() {
                     ...globalThroughput,
                     local: throughput.getLocalSnapshot(),
                 },
-                process: getWorkerStats(),
+                delivery: getWorkerStats(),
                 circuitsOpen: circuit.getOpenCircuits(),
             };
         },

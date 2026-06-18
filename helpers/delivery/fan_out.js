@@ -14,7 +14,6 @@ const httpClient = require("./http_client");
 const circuit = require("./circuit");
 const limiter = require("./limiter");
 const metrics = require("../metrics");
-const throughput = require("../throughput");
 const { config, log } = require("../../settings");
 
 async function deliverToSubscriber({ notificationId, topic, payload, subscription }) {
@@ -96,11 +95,6 @@ async function processNotification(data) {
             await deliverToSubscriber({ notificationId, topic, payload, subscription });
         })
     );
-
-    const successes = results.filter((result) => result.status === "fulfilled").length;
-    if (successes > 0) {
-        throughput.recordPostSucceeded(successes);
-    }
 
     const failures = results.filter((result) => result.status === "rejected");
     if (failures.length > 0) {

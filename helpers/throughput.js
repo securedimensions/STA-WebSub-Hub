@@ -16,36 +16,31 @@ const FLUSH_INTERVAL_MS = parseInt(process.env.HUB_THROUGHPUT_FLUSH_MS || "1000"
 const REDIS_PREFIX = {
     enqueued: "hub:throughput:enqueued",
     jobsCompleted: "hub:throughput:jobs-completed",
-    postsSucceeded: "hub:throughput:posts-succeeded",
-    delivered: "hub:throughput:delivered",
 };
 
 class SlidingWindow {
     constructor() {
-        this.events = [];
+        this.count = 0;
+        this.windowStartMs = Date.now();
     }
 
     record(amount = 1) {
-        const now = Date.now();
-        for (let i = 0; i < amount; i++) {
-            this.events.push(now);
-        }
-        this.prune(now);
+        this.rotateIfNeeded();
+        this.count += amount;
     }
 
-    prune(now = Date.now()) {
-        const cutoff = now - WINDOW_MS;
-        while (this.events.length > 0 && this.events[0] < cutoff) {
-            this.events.shift();
+    rotateIfNeeded(now = Date.now()) {
+        if (now - this.windowStartMs >= WINDOW_MS) {
+            this.count = 0;
+            this.windowStartMs = now;
         }
     }
 
-    snapshot() {
-        this.prune();
-        const count = this.events.length;
+    snapshot(now = Date.now()) {
+        this.rotateIfNeeded(now);
         return {
-            count,
-            perSecond: count / WINDOW_SECONDS,
+            count: this.count,
+            perSecond: this.count / WINDOW_SECONDS,
         };
     }
 }
@@ -53,12 +48,12 @@ class SlidingWindow {
 const local = {
     enqueued: new SlidingWindow(),
     jobsCompleted: new SlidingWindow(),
-    postsSucceeded: new SlidingWindow(),
 };
 
 const pendingRedis = new Map();
 let redis = null;
 let flushTimer = null;
+let flushInFlight = null;
 
 function getRedis() {
     if (redis === null) {
@@ -85,6 +80,10 @@ function scheduleFlush() {
 }
 
 async function flushPending() {
+    if (flushInFlight !== null) {
+        return flushInFlight;
+    }
+
     if (pendingRedis.size === 0) {
         return;
     }
@@ -92,25 +91,31 @@ async function flushPending() {
     const batch = new Map(pendingRedis);
     pendingRedis.clear();
 
-    try {
-        const client = getRedis();
-        const sec = Math.floor(Date.now() / 1000);
-        const multi = client.multi();
+    flushInFlight = (async () => {
+        try {
+            const client = getRedis();
+            const sec = Math.floor(Date.now() / 1000);
+            const multi = client.multi();
 
-        for (const [kind, amount] of batch) {
-            const prefix = REDIS_PREFIX[kind];
-            if (!prefix || amount <= 0) {
-                continue;
+            for (const [kind, amount] of batch) {
+                const prefix = REDIS_PREFIX[kind];
+                if (!prefix || amount <= 0) {
+                    continue;
+                }
+                const key = `${prefix}:${sec}`;
+                multi.incrby(key, amount);
+                multi.expire(key, REDIS_KEY_TTL_SECONDS);
             }
-            const key = `${prefix}:${sec}`;
-            multi.incrby(key, amount);
-            multi.expire(key, REDIS_KEY_TTL_SECONDS);
-        }
 
-        await multi.exec();
-    } catch (_e) {
-        // best-effort
-    }
+            await multi.exec();
+        } catch (_e) {
+            // best-effort
+        } finally {
+            flushInFlight = null;
+        }
+    })();
+
+    return flushInFlight;
 }
 
 function record(kind, amount = 1) {
@@ -122,18 +127,16 @@ function record(kind, amount = 1) {
 function withSnapshot(counts) {
     const enqueuedPerSecond = counts.enqueued.perSecond;
     const jobsCompletedPerSecond = counts.jobsCompleted.perSecond;
-    const postsSucceededPerSecond = counts.postsSucceeded.perSecond;
 
     return {
         windowSeconds: WINDOW_SECONDS,
         enqueuedPerSecond,
         jobsCompletedPerSecond,
-        postsSucceededPerSecond,
         enqueuedInWindow: counts.enqueued.count,
         jobsCompletedInWindow: counts.jobsCompleted.count,
-        postsSucceededInWindow: counts.postsSucceeded.count,
+        // Backward-compatible names (notifications = one queue job completed)
         deliveredPerSecond: jobsCompletedPerSecond,
-        notificationsPerSecond: postsSucceededPerSecond,
+        notificationsPerSecond: jobsCompletedPerSecond,
         deliveredInWindow: counts.jobsCompleted.count,
     };
 }
@@ -142,7 +145,6 @@ function emptySnapshot() {
     return withSnapshot({
         enqueued: { count: 0, perSecond: 0 },
         jobsCompleted: { count: 0, perSecond: 0 },
-        postsSucceeded: { count: 0, perSecond: 0 },
     });
 }
 
@@ -165,32 +167,25 @@ async function readRedisWindow(prefix) {
     }
 }
 
-async function readRedisWindowMerged(prefixes) {
-    const parts = await Promise.all(prefixes.map((prefix) => readRedisWindow(prefix)));
-    const count = parts.reduce((sum, part) => sum + part.count, 0);
-    return {
-        count,
-        perSecond: count / WINDOW_SECONDS,
-    };
-}
-
 async function getGlobalSnapshot() {
-    await flushPending();
+    if (flushInFlight !== null) {
+        await flushInFlight;
+    } else {
+        await flushPending();
+    }
 
-    const [enqueued, jobsCompleted, postsSucceeded] = await Promise.all([
+    const [enqueued, jobsCompleted] = await Promise.all([
         readRedisWindow(REDIS_PREFIX.enqueued),
-        readRedisWindowMerged([REDIS_PREFIX.jobsCompleted, REDIS_PREFIX.delivered]),
-        readRedisWindow(REDIS_PREFIX.postsSucceeded),
+        readRedisWindow(REDIS_PREFIX.jobsCompleted),
     ]);
 
-    return withSnapshot({ enqueued, jobsCompleted, postsSucceeded });
+    return withSnapshot({ enqueued, jobsCompleted });
 }
 
 function getLocalSnapshot() {
     return withSnapshot({
         enqueued: local.enqueued.snapshot(),
         jobsCompleted: local.jobsCompleted.snapshot(),
-        postsSucceeded: local.postsSucceeded.snapshot(),
     });
 }
 
@@ -198,7 +193,6 @@ module.exports = {
     record,
     recordEnqueued: (amount = 1) => record("enqueued", amount),
     recordJobCompleted: (amount = 1) => record("jobsCompleted", amount),
-    recordPostSucceeded: (amount = 1) => record("postsSucceeded", amount),
     getGlobalSnapshot,
     getLocalSnapshot,
     emptySnapshot,
