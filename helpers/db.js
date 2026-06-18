@@ -83,9 +83,14 @@ let clearAll = async function () {
 
 let numSubscriptions = async function (topic) {
     const topicKeys = topicDbLookupKeys(topic);
+    const now = Math.round(Date.now() / 1000);
     // topic is not enforced unique in the DB schema, so count across all matching topic rows
-    let sql_query = `SELECT count(*)::int from subscriptions WHERE topic_id IN (SELECT id FROM topics WHERE topic = ANY($1::text[]))`;
-    let sql_values = [topicKeys];
+    let sql_query = `
+        SELECT count(*)::int
+        FROM subscriptions s
+        WHERE s.topic_id IN (SELECT id FROM topics WHERE topic = ANY($1::text[]))
+          AND (s.duration IS NULL OR s.duration >= $2)`;
+    let sql_values = [topicKeys, now];
 
     let result = await pool.query(sql_query, sql_values);
     return result.rows[0].count;
@@ -176,7 +181,7 @@ let updateSubscription = async function (topic_id, callback, lease_seconds, secr
         await client.query('BEGIN')
         const sql_query = 'UPDATE subscriptions SET secret = ($1), updated = ($4), duration = ($5), status = ($6) WHERE topic_id = $3 AND callback = $2';
         const sql_values = [secret, callback, topic_id, date.toISOString(), duration, subscription_state.UPDATED];
-        client.query(sql_query, sql_values);
+        await client.query(sql_query, sql_values);
         await client.query('COMMIT')
     } catch (e) {
         await client.query('ROLLBACK')

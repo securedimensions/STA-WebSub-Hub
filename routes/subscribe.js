@@ -165,29 +165,27 @@ let subscribe = async function (topic_url, topic, callback, lease_seconds = conf
                 return;
             }
 
-            // Request MQTT subscription via ingest process
-            log.info(`requesting MQTT subscribe for topic="${topic}"`);
-            await publishSubscribe("" + topic);
-
-            // find all callback URLs for the topic...
+            // Persist subscription before MQTT subscribe so delivery workers see
+            // active callbacks (avoids maybeUnsubscribe undoing a re-subscribe).
             let subscriptions = await db.getSubscriptions(topic);
             log.debug('subscriptions: ', subscriptions);
             const subscription = subscriptions.filter(s => s.callback === callback);
 
             if (subscription.length === 0) {
                 log.info(`no subscription for topic: ${topic_url} -> ${callback}`);
-                // Insert subscription into the database
                 await db.insertSubscription(topic_url, topic, callback, lease_seconds, secret);
                 log.info(`subscription created: ${topic_url} -> ${callback}`);
             } else {
                 log.debug('subscription topic_id: ' + subscription[0].topic_id);
-                // the subscription exists and need to be updated
                 await db.updateSubscription(subscription[0].topic_id, callback, lease_seconds, secret);
                 log.info(`subscription updated: ${topic_url} -> ${callback}`);
             }
 
             await subscriptionCache.refreshTopic(topic);
             await publishRefreshTopic(topic);
+
+            log.info(`requesting MQTT subscribe for topic="${topic}"`);
+            await publishSubscribe("" + topic);
 
         }).catch(error => {
             log.error(`validation of intent error for ${topic_url} -> ${callback}: ${error}`);

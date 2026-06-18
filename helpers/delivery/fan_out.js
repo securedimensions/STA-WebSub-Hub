@@ -17,10 +17,23 @@ const metrics = require("../metrics");
 const { config, log } = require("../../settings");
 
 async function maybeUnsubscribeTopic(topic) {
-    if ((await subscriptionCache.getActive(topic)).length === 0) {
-        log.info(`no active subscriptions for topic: ${topic}`);
-        await publishUnsubscribe("" + topic);
+    if ((await subscriptionCache.getActive(topic)).length > 0) {
+        return;
     }
+
+    // Cache may lag behind a subscribe still in flight; confirm with DB before
+    // tearing down MQTT (stale queue jobs can otherwise undo a re-subscribe).
+    const dbSubs = await db.getSubscriptions(topic);
+    if (dbSubs.length > 0) {
+        log.debug(
+            `cache empty but database has active subscription(s) for topic="${topic}"; refreshing cache`
+        );
+        await subscriptionCache.refreshTopic(topic);
+        return;
+    }
+
+    log.info(`no active subscriptions for topic: ${topic}`);
+    await publishUnsubscribe("" + topic);
 }
 
 async function deliverToSubscriber({ notificationId, topic, payload, subscription }) {
