@@ -1,13 +1,18 @@
 # Scheduled cleanup of expired WebSub subscriptions (Postgres + cache reload).
-FROM node:22-alpine
+# supercronic is a glibc binary — use Debian-based Node, not Alpine (musl).
+FROM node:22-bookworm-slim
 
-ARG TARGETARCH
-RUN apk add --no-cache curl \
+ARG TARGETARCH=amd64
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl ca-certificates \
     && ARCH=linux-amd64 \
     && if [ "$TARGETARCH" = "arm64" ]; then ARCH=linux-arm64; fi \
     && curl -fsSL -o /usr/local/bin/supercronic \
         "https://github.com/aptible/supercronic/releases/download/v0.2.33/supercronic-${ARCH}" \
-    && chmod +x /usr/local/bin/supercronic
+    && chmod +x /usr/local/bin/supercronic \
+    && apt-get purge -y curl \
+    && apt-get autoremove -y \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /hub-app
 
