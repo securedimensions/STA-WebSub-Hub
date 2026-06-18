@@ -14,6 +14,7 @@ const { Query } = require("pg");
 const assert = require("assert");
 const { topicFromDb } = require("./helpers/topic_key");
 const { startMqttCommandListener } = require("./helpers/mqtt/commands");
+const mqttRegistry = require("./helpers/mqtt/registry");
 const { getQueue } = require("./helpers/queue/producer");
 const { getQueueStats } = require("./helpers/queue/stats");
 const metrics = require("./helpers/metrics");
@@ -25,24 +26,38 @@ let mqttCmdSub = null;
 let statsTimer = null;
 let opsServer = null;
 
+function subscribeMqttTopic(topic, source) {
+    log.debug(`MQTT subscribe request (${source}): topic="${topic}" connected=${mqtt_client.connected}`);
+    mqtt_client.subscribe(topic, (err, granted) => {
+        mqttRegistry.recordSubscribe(topic, { source, err, granted });
+    });
+}
+
+function unsubscribeMqttTopic(topic, source) {
+    log.debug(`MQTT unsubscribe request (${source}): topic="${topic}" connected=${mqtt_client.connected}`);
+    mqtt_client.unsubscribe(topic, (err) => {
+        mqttRegistry.recordUnsubscribe(topic, { source, err });
+    });
+}
+
 async function subscribeToAllTopicsFromDb() {
     const client = await pool.connect();
     const query = new Query("SELECT topic from topics");
     const result = client.query(query);
     assert.equal(query, result);
 
+    let topicCount = 0;
+
     query
         .on("row", (row) => {
+            topicCount += 1;
             const topic = topicFromDb(row.topic);
-            log.info("Subscribing to MQTT topic: ", topic);
-            mqtt_client.subscribe(topic, (err, granted) => {
-                if (err !== null) log.error(err);
-                if (granted !== null) log.debug(granted[0]);
-            });
+            log.debug(`DB topic row raw="${row.topic}" mqtt="${topic}"`);
+            subscribeMqttTopic(topic, "startup-db");
         })
         .on("end", () => {
             client.release();
-            log.info("Ingest ready!");
+            log.info(`Ingest ready! loaded ${topicCount} topic(s) from database for MQTT subscribe`);
         })
         .on("error", (error) => {
             client.release();
@@ -53,15 +68,12 @@ async function subscribeToAllTopicsFromDb() {
 async function startCommandListener() {
     mqttCmdSub = await startMqttCommandListener(async (cmd) => {
         if (cmd.action === "subscribe") {
-            mqtt_client.subscribe(cmd.topic, (err) => {
-                if (err) log.error(err);
-            });
+            subscribeMqttTopic(cmd.topic, "redis-command");
         } else if (cmd.action === "unsubscribe") {
-            mqtt_client.unsubscribe(cmd.topic, (err) => {
-                if (err) log.error(err);
-            });
+            unsubscribeMqttTopic(cmd.topic, "redis-command");
         }
     });
+    log.info("MQTT command listener ready (redis channel mqtt:commands)");
 }
 
 function startQueueStatsLogger() {
@@ -88,18 +100,29 @@ function startQueueStatsLogger() {
 
 mqtt_client
     .on("connect", async () => {
-        log.info(`Connected to Publisher ${config.sta.root_url}`);
+        log.info(`Connected to MQTT broker ${config.sta.mqtt_url} (publisher ${config.sta.root_url})`);
         await startCommandListener();
         await subscribeToAllTopicsFromDb();
         startQueueStatsLogger();
     })
+    .on("reconnect", () => {
+        log.info(`Reconnecting to MQTT broker ${config.sta.mqtt_url}`);
+    })
     .on("disconnect", () => {
-        log.info(`Disconnected from Publisher ${config.sta.root_url}`);
+        log.info(`Disconnected from MQTT broker ${config.sta.mqtt_url}`);
     })
     .on("close", () => {
-        log.info(`Publisher ${config.sta.root_url} closed MQTT connection`);
+        log.info(`MQTT connection closed (${config.sta.mqtt_url})`);
+    })
+    .on("error", (err) => {
+        log.error(`MQTT client error: ${err.message}`);
+    })
+    .on("offline", () => {
+        log.warn(`MQTT client offline (${config.sta.mqtt_url})`);
     })
     .on("message", (topic, message) => {
+        log.debug(`MQTT message received: topic="${topic}" bytes=${message.length}`);
+
         if (message.length > config.max_content_size) {
             log.error(
                 `rejecting content delivery as size exceeds limit of ${config.max_content_size}`
@@ -112,11 +135,15 @@ mqtt_client
                 JSON.parse(message.toString());
             }
 
-            enqueueNotification(topic, message.toString()).catch((err) => {
-                log.error(`failed to enqueue notification for ${topic}: ${err.message}`);
-            });
+            enqueueNotification(topic, message.toString())
+                .then(() => {
+                    log.debug(`notification enqueued: topic="${topic}" bytes=${message.length}`);
+                })
+                .catch((err) => {
+                    log.error(`failed to enqueue notification for ${topic}: ${err.message}`);
+                });
         } catch (e) {
-            log.error(`payload not JSON format: ${e}`);
+            log.error(`payload not JSON format for topic="${topic}": ${e}`);
         }
     });
 
@@ -131,6 +158,11 @@ opsServer = startOpsServer({
         role: "ingest",
         at: new Date().toISOString(),
         queue: await getQueueStats(),
+        mqtt: {
+            connected: mqtt_client.connected,
+            broker: config.sta.mqtt_url,
+            ...mqttRegistry.snapshot(),
+        },
         process: metrics.snapshot(),
     }),
 });
@@ -157,4 +189,3 @@ async function shutdown(signal) {
 
 process.on("SIGTERM", () => shutdown("SIGTERM"));
 process.on("SIGINT", () => shutdown("SIGINT"));
-

@@ -91,6 +91,7 @@ async function processNotification(data) {
     log.debug(`no of subscriptions for ${topic}: ${subs.length}`);
 
     if (subs.length === 0) {
+        log.info(`no cached subscriptions for topic="${topic}"; skipping delivery`);
         await maybeUnsubscribeTopic(topic);
         return;
     }
