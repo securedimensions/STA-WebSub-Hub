@@ -21,10 +21,12 @@ function getPublisher() {
 }
 
 async function publishSubscribe(topic) {
+    log.debug(`mqtt command publish: action=subscribe topic="${topic}"`);
     await getPublisher().publish(CHANNEL, JSON.stringify({ action: "subscribe", topic }));
 }
 
 async function publishUnsubscribe(topic) {
+    log.debug(`mqtt command publish: action=unsubscribe topic="${topic}"`);
     await getPublisher().publish(CHANNEL, JSON.stringify({ action: "unsubscribe", topic }));
 }
 
@@ -36,8 +38,10 @@ async function startMqttCommandListener(onCommand) {
         try {
             const cmd = JSON.parse(message);
             if (!cmd || typeof cmd.action !== "string" || typeof cmd.topic !== "string") {
+                log.debug(`mqtt command ignored: invalid payload ${message}`);
                 return;
             }
+            log.debug(`mqtt command received: action=${cmd.action} topic="${cmd.topic}"`);
             await onCommand(cmd);
         } catch (e) {
             log.error(`invalid mqtt command message: ${e.message}`);

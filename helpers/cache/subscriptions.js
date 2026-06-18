@@ -12,6 +12,10 @@ const { log } = require("../../settings");
 
 const byTopic = new Map();
 
+function cacheKey(topic) {
+    return normalizeTopicKey(topic);
+}
+
 // Serialize cache mutations so concurrent delivery jobs and invalidation
 // events cannot interleave writes on the same topic entry.
 let writeLock = Promise.resolve();
@@ -55,18 +59,19 @@ async function load() {
 }
 
 async function refreshTopic(topic) {
-    const subs = await db.getSubscriptions(normalizeTopicKey(topic));
+    const key = cacheKey(topic);
+    const subs = await db.getSubscriptions(key);
     await withWriteLock(async () => {
         if (subs.length === 0) {
-            byTopic.delete(topic);
+            byTopic.delete(key);
             return;
         }
-        byTopic.set(topic, subs);
+        byTopic.set(key, subs);
     });
 }
 
 function snapshot(topic) {
-    return [...(byTopic.get(topic) || [])];
+    return [...(byTopic.get(cacheKey(topic)) || [])];
 }
 
 function getAll(topic) {
@@ -84,21 +89,22 @@ function isActiveSub(sub, seconds) {
 }
 
 async function getActive(topic) {
-    const subs = snapshot(topic);
+    const key = cacheKey(topic);
+    const subs = snapshot(key);
     const seconds = Math.round(Date.now() / 1000);
     const active = subs.filter((sub) => isActiveSub(sub, seconds));
 
     if (active.length < subs.length) {
         await withWriteLock(async () => {
-            const current = byTopic.get(topic);
+            const current = byTopic.get(key);
             if (current === undefined) {
                 return;
             }
             const compacted = current.filter((sub) => isActiveSub(sub, seconds));
             if (compacted.length === 0) {
-                byTopic.delete(topic);
+                byTopic.delete(key);
             } else {
-                byTopic.set(topic, compacted);
+                byTopic.set(key, compacted);
             }
         });
     }
@@ -107,8 +113,9 @@ async function getActive(topic) {
 }
 
 async function updateStatus(topic, callback, status) {
+    const key = cacheKey(topic);
     await withWriteLock(async () => {
-        const subs = byTopic.get(topic);
+        const subs = byTopic.get(key);
         if (subs === undefined) {
             return;
         }
@@ -116,21 +123,22 @@ async function updateStatus(topic, callback, status) {
         if (sub !== undefined) {
             sub.status = status;
         }
-        byTopic.set(topic, [...subs]);
+        byTopic.set(key, [...subs]);
     });
 }
 
 async function remove(topic, callback) {
+    const key = cacheKey(topic);
     await withWriteLock(async () => {
-        const subs = byTopic.get(topic);
+        const subs = byTopic.get(key);
         if (subs === undefined) {
             return;
         }
         const filtered = subs.filter((s) => s.callback !== callback);
         if (filtered.length === 0) {
-            byTopic.delete(topic);
+            byTopic.delete(key);
         } else {
-            byTopic.set(topic, filtered);
+            byTopic.set(key, filtered);
         }
     });
 }

@@ -166,7 +166,8 @@ let subscribe = async function (topic_url, topic, callback, lease_seconds = conf
             }
 
             // Request MQTT subscription via ingest process
-            await publishSubscribe('' + topic);
+            log.info(`requesting MQTT subscribe for topic="${topic}"`);
+            await publishSubscribe("" + topic);
 
             // find all callback URLs for the topic...
             let subscriptions = await db.getSubscriptions(topic);
