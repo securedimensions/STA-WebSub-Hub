@@ -161,27 +161,8 @@ subscriber-1  | X-Hub-Signature valid
 subscriber-1  | ==============
 ````
 
-#### Testing incorrect `hub.secret`
-Topic `hub.secret=foobar` is a subscription with an incorrect secret. The subscriber will display something like this:
-
-````
-subscriber-1  | ==============
-subscriber-1  | callback: /accepted/hub.secret=foobar
-subscriber-1  | headers:
-subscriber-1  | {
-subscriber-1  |   host: 'subscriber:8081',
-subscriber-1  |   connection: 'keep-alive',
-subscriber-1  |   'content-type': 'application/json',
-subscriber-1  |   link: 'http://localhost:4000/api/subscriptions;rel="hub", http://publisher/hub.secret=foobar;rel="self"',
-subscriber-1  |   'x-hub-signature': 'sha256=49a21f347d2dd8413f0da4d8fc17aa1d419488ab61fa7965313808f41ab8d60e',
-subscriber-1  |   'user-agent': 'node-urllib/VERSION Node.js/22.11.0 (linux; x64)',
-subscriber-1  |   'content-length': '54'
-subscriber-1  | }
-subscriber-1  | message:
-subscriber-1  | {"topic": "hub.secret=foobar", "sequence": 1731606970}
-subscriber-1  | X-Hub-Signature invalid!
-subscriber-1  | ==============
-````
+#### Testing `hub.secret` per subscription
+Topics named `hub.secret=<value>` encode the subscription secret in the callback path. The test subscriber uses that value for HMAC verification, so both `hub.secret=secret` and `hub.secret=foobar` should log **X-Hub-Signature valid** when the hub signed with the matching `hub.secret`.
 
 #### Testing missing `hub.secret`
 Topic `ABC` is a subscription with missing secret. The subscriber will display something like this:

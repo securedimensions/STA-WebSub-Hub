@@ -33,10 +33,65 @@ log.setLevel(process.env.SUBSCRIBER_LOG_LEVEL || log.levels.DEBUG);
 
 const subscriber_port = process.env.SUBSCRIBER_PORT || 8081;
 const subscriber_secret = process.env.SUBSCRIBER_SECRET || "secret";
-const hub_signature_algorithm = process.env.HUB_SIGNATURE_ALGORTIHM || "sha256";
-
 
 const subscriber = express();
+
+// Parse raw POST bodies once for all notification routes (WebSub HMAC is over raw bytes).
+subscriber.use(express.raw({ type: "*/*", limit: "10mb" }));
+
+function resolveSecret(req) {
+    // Test topics encode the subscription secret in the callback path: hub.secret=<value>
+    const path = decodeURIComponent(req.path);
+    const fromPath = path.match(/hub\.secret=([^/]+)/);
+    if (fromPath) {
+        return fromPath[1];
+    }
+    return subscriber_secret;
+}
+
+function payloadBuffer(body) {
+    if (Buffer.isBuffer(body)) {
+        return body;
+    }
+    if (typeof body === "string") {
+        return Buffer.from(body, "utf8");
+    }
+    return Buffer.alloc(0);
+}
+
+function verifyHubSignature(req) {
+    const x_hub_signature = req.header("X-Hub-Signature");
+    if (!x_hub_signature) {
+        return { ok: false, reason: "missing" };
+    }
+
+    const separator = x_hub_signature.indexOf("=");
+    if (separator === -1) {
+        return { ok: false, reason: "malformed-header", header: x_hub_signature };
+    }
+
+    const algorithm = x_hub_signature.slice(0, separator).toLowerCase();
+    const providedDigest = x_hub_signature.slice(separator + 1);
+    const secret = resolveSecret(req);
+    const body = payloadBuffer(req.body);
+    const expectedDigest = crypto.createHmac(algorithm, secret).update(body).digest("hex");
+
+    const provided = Buffer.from(providedDigest, "utf8");
+    const expected = Buffer.from(expectedDigest, "utf8");
+    const digestMatches =
+        provided.length === expected.length &&
+        crypto.timingSafeEqual(provided, expected);
+
+    return {
+        ok: digestMatches,
+        reason: digestMatches ? "valid" : "mismatch",
+        algorithm,
+        secret,
+        bodyBytes: body.length,
+        providedDigest,
+        expectedDigest,
+    };
+}
 
 // All subscriptions and unsubscriptions are accepted
 subscriber.get('/accepted/*', function (req, res) {
@@ -59,24 +114,27 @@ subscriber.get('/rejected/*', function (req, res) {
     return res.status(404).send();
 });
 
-subscriber.post('*', express.raw({ type: '*/*' }), function (req, res) {
+subscriber.post('*', function (req, res) {
     log.debug('==============');
     log.debug('callback: ' + req.originalUrl);
     log.debug(`headers:`);
     log.debug(req.headers);
     log.debug('message:');
-    log.debug(req.body.toString());
+    log.debug(payloadBuffer(req.body).toString('utf8'));
 
-    const x_hub_signature = req.header('X-Hub-Signature') || null;
-    if (x_hub_signature !== null) {
-        let hmac = crypto.createHmac(hub_signature_algorithm, subscriber_secret).update(req.body.toString()).digest("hex");
-        if ((hub_signature_algorithm + '=' + hmac) === x_hub_signature) {
-            log.info("X-Hub-Signature valid");
-        } else {
-            log.info("X-Hub-Signature invalid!");
-        }
-    } else {
+    const verification = verifyHubSignature(req);
+    if (verification.ok) {
+        log.info(
+            `X-Hub-Signature valid (algorithm=${verification.algorithm}, secret=${verification.secret}, bodyBytes=${verification.bodyBytes})`
+        );
+    } else if (verification.reason === "missing") {
         log.info("message with no X-Hub-Signature");
+    } else {
+        log.info(
+            `X-Hub-Signature invalid! reason=${verification.reason} algorithm=${verification.algorithm} secret=${verification.secret} bodyBytes=${verification.bodyBytes}`
+        );
+        log.debug(`provided=${verification.providedDigest}`);
+        log.debug(`expected=${verification.expectedDigest}`);
     }
     log.debug('==============');
 
