@@ -29,6 +29,7 @@ const parseHttpHeader = require('parse-http-header');
 const path = require('path');
 const favicon = require('serve-favicon');
 
+const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const subscriptions = require('./routes/subscriptions');
 const ops = require('./routes/ops');
@@ -47,6 +48,7 @@ const subscriptionLimiter = rateLimit({
 });
 
 const app = express();
+app.use(helmet());
 app.use(function (req, res, next) {
   
   if (['PATCH', 'PUT', 'DELETE'].includes(req.method)) {
