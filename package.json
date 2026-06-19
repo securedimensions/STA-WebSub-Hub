@@ -30,7 +30,7 @@
     "helmet": "^8.2.0",
     "ioredis": "^5.4.2",
     "loglevel": "^1.9.2",
-    "mocha": "^10.7.3",
+    "mocha": "^11.7.6",
     "mqtt": "^5.10.1",
     "parse-http-header": "^1.0.1",
     "pg": "^8.13.0",
@@ -39,6 +39,10 @@
     "urllib": "^4.4.0"
   },
   "devDependencies": {
-    "nodemon": "^1.12.1"
+    "nodemon": "^3.1.14"
+  },
+  "overrides": {
+    "serialize-javascript": "^7.0.6",
+    "diff": "^9.0.0"
   }
 }
