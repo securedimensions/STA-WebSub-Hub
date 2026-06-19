@@ -80,6 +80,7 @@ Some environment variables control the basic behavior of the Hub by overwriting 
 * **DELIVERY_CIRCUIT_FAILURE_THRESHOLD**: Failures before opening circuit. Default: `10`
 * **DELIVERY_CIRCUIT_WINDOW_MS**: Sliding window for circuit failures. Default: `60000`
 * **DELIVERY_CIRCUIT_OPEN_MS**: How long a circuit stays open. Default: `30000`
+* **HUB_OPS_TOKEN**: Secret token required to access all `/ops` endpoints on the API role. Pass it as the `x-ops-token` request header or `?token=` query parameter. When unset, all `/ops` endpoints return `503`. **Must be set in production** — generate with e.g. `openssl rand -hex 32`.
 * **HUB_STATS_INTERVAL_MS**: Log queue/delivery counters every N ms (0 = disabled)
 * **HUB_OPS_PORT**: HTTP port for ingest/delivery health and metrics (`GET /health`, `GET /metrics`). Disabled when unset or `0`. In Docker this is set per container from `HUB_INGEST_OPS_PORT` / `HUB_DELIVERY_OPS_PORT`.
 * **HUB_INGEST_OPS_PORT** / **HUB_DELIVERY_OPS_PORT**: Default ops ports for ingest (`4001`) and delivery (`4002`) in compose files
@@ -91,6 +92,8 @@ Some environment variables control the basic behavior of the Hub by overwriting 
 ## Operations
 
 The hub exposes health and metrics on three roles. In split deployments (`HUB_MODE=api` / `ingest` / `delivery`), use the API for queue overview and DLQ management, ingest for MQTT/enqueue visibility, and delivery for fan-out and circuit-breaker state.
+
+> **Authentication:** All `/ops` endpoints on the API role require the `HUB_OPS_TOKEN` env var to be set. Pass it as the `x-ops-token` header or `?token=` query param. Without a configured token the endpoints return `503`.
 
 | Role | Base URL (defaults) | Endpoints |
 |------|---------------------|-----------|
@@ -202,10 +205,10 @@ The API response also includes `process` with lifetime counters for the API role
 ### Examples
 
 ```bash
-# API — health, metrics, failed jobs
-curl -s http://localhost:4000/ops/health | jq
-curl -s http://localhost:4000/ops/metrics | jq '.queue, .throughput, .subscriptionLifecycle'
-curl -s 'http://localhost:4000/ops/failed?limit=10'
+# API — health, metrics, failed jobs (requires HUB_OPS_TOKEN)
+curl -s -H "x-ops-token: $HUB_OPS_TOKEN" http://localhost:4000/ops/health | jq
+curl -s -H "x-ops-token: $HUB_OPS_TOKEN" http://localhost:4000/ops/metrics | jq '.queue, .throughput, .subscriptionLifecycle'
+curl -s -H "x-ops-token: $HUB_OPS_TOKEN" 'http://localhost:4000/ops/failed?limit=10'
 
 # Ingest / delivery (local dev or host compose)
 curl -s http://localhost:4001/health | jq
@@ -227,7 +230,7 @@ npm run failed:retry-all -- --limit=1000 --batch=200
 npm run failed:purge
 ```
 
-Or via API: `GET /ops/failed`, `POST /ops/failed/:id/retry`, `POST /ops/failed/retry-all`, `POST /ops/failed/purge?confirm=true`
+Or via API (all require `x-ops-token` header): `GET /ops/failed`, `POST /ops/failed/:id/retry`, `POST /ops/failed/retry-all`, `POST /ops/failed/purge?confirm=true`
 
 **Retry-all** re-queues failed jobs for delivery (watch `queue.waiting` / subscriber load). **Purge** permanently removes failed jobs without delivering them — typical for stale live-stream data after an outage.
 
