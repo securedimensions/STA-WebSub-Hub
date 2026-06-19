@@ -19,6 +19,7 @@ services:
     env_file:
       - ./.env
     environment:
+      - "NODE_ENV=production"
       - "HUB_PORT=$HUB_PORT"
       - "HUB_LOG_LEVEL=$HUB_LOG_LEVEL"
       - "HUB_URL=$HUB_URL"
@@ -42,6 +43,7 @@ services:
     env_file:
       - ./.env
     environment:
+      - "NODE_ENV=production"
       - "HUB_LOG_LEVEL=$HUB_LOG_LEVEL"
       - "STA_ROOT_URL=$STA_ROOT_URL"
       - "STA_MQTT_URL=$STA_MQTT_URL"
@@ -63,6 +65,7 @@ services:
     env_file:
       - ./.env
     environment:
+      - "NODE_ENV=production"
       - "HUB_LOG_LEVEL=$HUB_LOG_LEVEL"
       - "STA_ROOT_URL=$STA_ROOT_URL"
       - "STA_MQTT_URL=$STA_MQTT_URL"
