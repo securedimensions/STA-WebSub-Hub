@@ -42,7 +42,7 @@ module.exports = {
             "min_lease_seconds": 60,
             "url": process.env.HUB_URL || "http://localhost:4000/api/subscriptions",
             "port": process.env.HUB_PORT || 4000,
-            "sha_algorithm": process.env.HUB_SIGNATURE_ALGORTIHM || "sha256",
+            "sha_algorithm": process.env.HUB_SIGNATURE_ALGORITHM || "sha256",
             "enforce_JSON": false,
             "enforce_UTF8": false
         },

@@ -96,7 +96,7 @@ let unsubscribe = async function (topic_url, topic, callback) {
     }).catch(error => {
         // Validation of intent failed => subscription remains unchanged
         log.error(`validation if intent error for ${topic_url} -> ${callback}: ${error}`);
-        if (typeof error.errors === 'array') {
+        if (Array.isArray(error.errors)) {
             error.errors.forEach(e => {
                 log.debug(e);
             })
