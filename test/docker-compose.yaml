@@ -6,7 +6,7 @@ volumes:
   postgres_data:
 
 services:
-  db:
+  db-test:
     image: postgres:14.2
     restart: no
     networks:
@@ -26,7 +26,7 @@ services:
       timeout: 3s
       retries: 3
 
-  broker:
+  broker-test:
     image: eclipse-mosquitto
     restart: no
     networks:
@@ -38,7 +38,7 @@ services:
     volumes:
       - ./config:/mosquitto/config:rw
 
-  redis:
+  redis-test:
     image: redis:7-alpine
     restart: no
     networks:
@@ -52,7 +52,7 @@ services:
       timeout: 3s
       retries: 3
 
-  publisher:
+  publisher-test:
     build:
       context: ../test/publisher
       dockerfile: Dockerfile
@@ -62,16 +62,16 @@ services:
     environment:
       - "PUBLISHER_PORT=8181"
       - "PUBLISHER_LOG_LEVEL=DEBUG"
-      - "HUB_URL=http://hub-api:${HUB_PORT:-4000}/api/subscriptions"
-      - "STA_ROOT_URL=http://publisher"
-      - "STA_MQTT_URL=mqtt://broker:1883"
+      - "HUB_URL=http://hub-api-test:${HUB_PORT:-4000}/api/subscriptions"
+      - "STA_ROOT_URL=http://publisher-test"
+      - "STA_MQTT_URL=mqtt://broker-test:1883"
     expose:
       - "8181"
     depends_on:
-      broker:
+      broker-test:
         condition: service_started
 
-  subscriber:
+  subscriber-test:
     build:
       context: ../test/subscriber
       dockerfile: Dockerfile
@@ -84,7 +84,7 @@ services:
     expose:
       - "8081"
 
-  hub-api:
+  hub-api-test:
     build:
       context: ..
       dockerfile: Dockerfile
@@ -92,18 +92,18 @@ services:
     networks:
       - WebSubHubTest
     environment:
-      - "POSTGRES_HOST=db"
+      - "POSTGRES_HOST=db-test"
       - "POSTGRES_PORT=5432"
       - "POSTGRES_USER=websub"
       - "POSTGRES_PASSWORD=changeme"
       - "POSTGRES_DB=websub"
       - "HUB_PORT=${HUB_PORT:-4000}"
       - "HUB_LOG_LEVEL=INFO"
-      - "HUB_URL=http://hub-api:${HUB_PORT:-4000}/api/subscriptions"
-      - "STA_ROOT_URL=http://publisher/"
-      - "STA_MQTT_URL=mqtt://broker:1883"
-      - "PUBLISHER_URL=http://publisher:8181"
-      - "REDIS_URL=redis://redis:6379"
+      - "HUB_URL=http://hub-api-test:${HUB_PORT:-4000}/api/subscriptions"
+      - "STA_ROOT_URL=http://publisher-test/"
+      - "STA_MQTT_URL=mqtt://broker-test:1883"
+      - "PUBLISHER_URL=http://publisher-test:8181"
+      - "REDIS_URL=redis://redis-test:6379"
       - "HUB_MODE=api"
       - "HUB_STATS_INTERVAL_MS=0"
       - "CALLBACK_ALLOW_INSECURE_HTTP=true"
@@ -113,15 +113,15 @@ services:
     expose:
       - "${HUB_PORT:-4000}"
     depends_on:
-      broker:
+      broker-test:
         condition: service_started
-      redis:
+      redis-test:
         condition: service_healthy
-      publisher:
+      publisher-test:
         condition: service_started
-      subscriber:
+      subscriber-test:
         condition: service_started
-      db:
+      db-test:
         condition: service_healthy
     healthcheck:
       test:
@@ -142,7 +142,7 @@ services:
       retries: 10
       start_period: 10s
 
-  hub-ingest:
+  hub-ingest-test:
     build:
       context: ..
       dockerfile: Dockerfile
@@ -150,26 +150,26 @@ services:
     networks:
       - WebSubHubTest
     environment:
-      - "POSTGRES_HOST=db"
+      - "POSTGRES_HOST=db-test"
       - "POSTGRES_PORT=5432"
       - "POSTGRES_USER=websub"
       - "POSTGRES_PASSWORD=changeme"
       - "POSTGRES_DB=websub"
       - "HUB_LOG_LEVEL=INFO"
-      - "STA_ROOT_URL=http://publisher/"
-      - "STA_MQTT_URL=mqtt://broker:1883"
-      - "REDIS_URL=redis://redis:6379"
+      - "STA_ROOT_URL=http://publisher-test/"
+      - "STA_MQTT_URL=mqtt://broker-test:1883"
+      - "REDIS_URL=redis://redis-test:6379"
       - "HUB_MODE=ingest"
       - "HUB_STATS_INTERVAL_MS=0"
     depends_on:
-      broker:
+      broker-test:
         condition: service_started
-      redis:
+      redis-test:
         condition: service_healthy
-      db:
+      db-test:
         condition: service_healthy
 
-  hub-delivery:
+  hub-delivery-test:
     build:
       context: ..
       dockerfile: Dockerfile
@@ -177,23 +177,23 @@ services:
     networks:
       - WebSubHubTest
     environment:
-      - "POSTGRES_HOST=db"
+      - "POSTGRES_HOST=db-test"
       - "POSTGRES_PORT=5432"
       - "POSTGRES_USER=websub"
       - "POSTGRES_PASSWORD=changeme"
       - "POSTGRES_DB=websub"
       - "HUB_LOG_LEVEL=INFO"
-      - "STA_ROOT_URL=http://publisher/"
-      - "STA_MQTT_URL=mqtt://broker:1883"
-      - "REDIS_URL=redis://redis:6379"
+      - "STA_ROOT_URL=http://publisher-test/"
+      - "STA_MQTT_URL=mqtt://broker-test:1883"
+      - "REDIS_URL=redis://redis-test:6379"
       - "HUB_MODE=delivery"
       - "HUB_STATS_INTERVAL_MS=0"
       - "CALLBACK_ALLOW_INSECURE_HTTP=true"
       - "CALLBACK_ALLOW_PRIVATE_NETS=true"
     depends_on:
-      redis:
+      redis-test:
         condition: service_healthy
-      db:
+      db-test:
         condition: service_healthy
 
   test-runner:
@@ -205,21 +205,21 @@ services:
     networks:
       - WebSubHubTest
     environment:
-      - "POSTGRES_HOST=db"
+      - "POSTGRES_HOST=db-test"
       - "POSTGRES_PORT=5432"
       - "POSTGRES_USER=websub"
       - "POSTGRES_PASSWORD=changeme"
       - "POSTGRES_DB=websub"
       - "HUB_PORT=${HUB_PORT:-4000}"
-      - "HUB_URL=http://hub-api:${HUB_PORT:-4000}/api/subscriptions"
-      - "STA_ROOT_URL=http://publisher/"
-      - "REDIS_URL=redis://redis:6379"
+      - "HUB_URL=http://hub-api-test:${HUB_PORT:-4000}/api/subscriptions"
+      - "STA_ROOT_URL=http://publisher-test/"
+      - "REDIS_URL=redis://redis-test:6379"
       - "HUB_OPS_TOKEN=${HUB_OPS_TOKEN:-test-ops-token}"
       - "HUB_SECRET_KEY=${HUB_SECRET_KEY:-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef}"
     depends_on:
-      hub-api:
+      hub-api-test:
         condition: service_healthy
-      hub-ingest:
+      hub-ingest-test:
         condition: service_started
-      hub-delivery:
+      hub-delivery-test:
         condition: service_started
