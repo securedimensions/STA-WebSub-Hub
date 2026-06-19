@@ -72,6 +72,18 @@ async function listActiveTopics() {
     return active;
 }
 
+/** Topics in the active set whose lease TTL key has already expired. */
+async function listStaleActiveTopics() {
+    const topics = await getRedis().smembers(ACTIVE_KEY);
+    const stale = [];
+    for (const topic of topics) {
+        if ((await getRedis().exists(ACTIVE_TTL_PREFIX + topic)) === 0) {
+            stale.push(topic);
+        }
+    }
+    return stale;
+}
+
 async function tryClaimUnsubscribe(topic) {
     const result = await getRedis().set(
         unsubClaimKey(topic),
@@ -130,6 +142,7 @@ module.exports = {
     markInactive,
     isActive,
     listActiveTopics,
+    listStaleActiveTopics,
     tryClaimUnsubscribe,
     syncActiveFromDb,
 };

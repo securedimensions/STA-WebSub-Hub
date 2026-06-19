@@ -17,11 +17,13 @@ const { getQueueStats } = require("./helpers/queue/stats");
 const metrics = require("./helpers/metrics");
 const throughput = require("./helpers/throughput");
 const { startOpsServer } = require("./helpers/ops/server");
+const { startLeaseSweep } = require("./helpers/mqtt/lease_sweep");
 
 metrics.setRole("ingest");
 
 let mqttCmdSub = null;
 let statsTimer = null;
+let leaseSweepTimer = null;
 let opsServer = null;
 let mqttSessionReady = false;
 
@@ -90,6 +92,23 @@ function startQueueStatsLogger() {
     }, intervalMs);
 }
 
+function startLeaseSweepTimer() {
+    if (leaseSweepTimer !== null) {
+        return;
+    }
+
+    const intervalMs = parseInt(process.env.HUB_LEASE_SWEEP_INTERVAL_MS || "2000", 10);
+    leaseSweepTimer = startLeaseSweep({
+        intervalMs,
+        getStillSubscribedTopics: () =>
+            mqttRegistry.snapshot().topics.map((entry) => entry.topic),
+    });
+
+    if (leaseSweepTimer !== null) {
+        log.info(`lease sweep enabled every ${intervalMs} ms`);
+    }
+}
+
 mqtt_client
     .on("connect", async () => {
         const isReconnect = mqttSessionReady;
@@ -104,6 +123,7 @@ mqtt_client
         if (statsTimer === null) {
             startQueueStatsLogger();
         }
+        startLeaseSweepTimer();
     })
     .on("reconnect", () => {
         log.info(`Reconnecting to MQTT broker ${config.sta.mqtt_url}`);
@@ -182,6 +202,10 @@ async function shutdown(signal) {
     if (statsTimer) {
         clearInterval(statsTimer);
         statsTimer = null;
+    }
+    if (leaseSweepTimer) {
+        clearInterval(leaseSweepTimer);
+        leaseSweepTimer = null;
     }
     if (opsServer) {
         opsServer.close();

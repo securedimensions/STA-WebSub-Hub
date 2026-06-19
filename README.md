@@ -86,6 +86,7 @@ Some environment variables control the basic behavior of the Hub by overwriting 
 * **HUB_METRICS_THROUGHPUT_WINDOW_MS**: Rolling window for throughput rates (default `10000` ms)
 * **HUB_THROUGHPUT_FLUSH_MS**: How often per-process throughput counters are flushed to Redis for cross-process aggregation (default `1000` ms)
 * **HUB_SUBSCRIPTION_EVENTS_MAX**: Max subscription lifecycle events retained in Redis for `/ops/metrics` (default `50`)
+* **HUB_LEASE_SWEEP_INTERVAL_MS**: Ingest polls for expired MQTT lease keys and unsubscribes (default `2000` ms; `0` = disabled)
 
 ## Operations
 
