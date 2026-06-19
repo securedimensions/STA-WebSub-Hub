@@ -28,17 +28,22 @@ const http_client = require('./helpers/http_client');
 const { config } = require('../settings');
 const db = require('../helpers/db');
 
-const sta_root_url = "http://publisher";
+// Derive from config so tests work regardless of how the publisher container is named.
+const sta_root_url = config.sta.root_url.replace(/\/$/, '');
+const subscriber_base = process.env.SUBSCRIBER_URL || 'http://subscriber:8081';
+
+// A URL that intentionally does NOT match STA_ROOT_URL, used to test the
+// "publisher not supported" rejection path.
+const bad_publisher_url = "http://unsupported-publisher";
 
 const parameters = [
     [{}, 400, 'no parameters'],
     [{ 'hub.mode': 'subscribe' }, 400, 'missing mandatory parameter `hub.mode`'],
     [{ 'hub.mode': 'subscribe', 'hub.callback': 'http://foobar' }, 400, 'missing mandatory parameter `hub.topic`'],
     [{ 'hub.mode': 'subscribe', 'hub.topic': 'topic' }, 400, 'missing mandatory parameter `hub.callback`'],
-    [{ 'hub.mode': 'subscribe', 'hub.callback': 'http://foobar', 'hub.topic': sta_root_url + 'ABC' }, 400, 'publisher not supported'],
-    [{ 'hub.mode': 'subscribe', 'hub.callback': 'http://foobar/' + "x".repeat(config.max_url_size), 'hub.topic': sta_root_url + 'ABC' }, 413, 'URL size exceeded'],
-    [{ 'hub.mode': 'subscribe', 'hub.callback': 'http://foobar/', 'hub.topic': sta_root_url + "x".repeat(config.max_topic_size) }, 413, 'Topic size exceeded']
-
+    [{ 'hub.mode': 'subscribe', 'hub.callback': 'http://foobar', 'hub.topic': bad_publisher_url + '/ABC' }, 400, 'publisher not supported'],
+    [{ 'hub.mode': 'subscribe', 'hub.callback': 'http://foobar/' + "x".repeat(config.max_url_size), 'hub.topic': bad_publisher_url + '/ABC' }, 413, 'URL size exceeded'],
+    [{ 'hub.mode': 'subscribe', 'hub.callback': subscriber_base + '/size-test', 'hub.topic': sta_root_url + '/' + "x".repeat(config.max_topic_size) }, 413, 'Topic size exceeded']
 ]
 
 describe('Subscription Parameter Failure Testing', () => {
@@ -79,7 +84,7 @@ describe('Subscribe Testing - with correct hub.secret', () => {
         });
 
 
-        params = { 'hub.mode': 'subscribe', 'hub.secret': 'secret', 'hub.callback': 'http://subscriber:8081/accepted/' + topic, 'hub.topic': sta_root_url + '/' + topic };
+        params = { 'hub.mode': 'subscribe', 'hub.secret': 'secret', 'hub.callback': subscriber_base + '/accepted/' + topic, 'hub.topic': sta_root_url + '/' + topic };
         message = `subscribe to topic ${topic}`;
         it(message, function (done) {
             // Subscribe for topic
@@ -131,7 +136,7 @@ describe('Subscribe Testing - with correct hub.secret', () => {
         });
 
 
-        params = { 'hub.mode': 'subscribe', 'hub.secret': 'foobar', 'hub.callback': 'http://subscriber:8081/accepted/' + topic, 'hub.topic': sta_root_url + '/' + topic };
+        params = { 'hub.mode': 'subscribe', 'hub.secret': 'foobar', 'hub.callback': subscriber_base + '/accepted/' + topic, 'hub.topic': sta_root_url + '/' + topic };
         message = `subscribe to topic ${topic}`;
         it(message, function (done) {
             // Subscribe for topic
@@ -182,7 +187,7 @@ describe('Subscribe Testing - no hub.secret', () => {
             await db.clearAll();
         });
 
-        params = { 'hub.mode': 'subscribe', 'hub.callback': 'http://subscriber:8081/accepted/' + topic, 'hub.topic': sta_root_url + '/' + topic };
+        params = { 'hub.mode': 'subscribe', 'hub.callback': subscriber_base + '/accepted/' + topic, 'hub.topic': sta_root_url + '/' + topic };
         message = `subscribe to topic ${topic}`;
         it(message, function (done) {
             // Subscribe for topic
@@ -233,7 +238,7 @@ describe('Subscribe / Unsubscribe Testing', () => {
             await db.clearAll();
         });
         it(message, function (done) {
-            params = { 'hub.mode': 'subscribe', 'hub.callback': 'http://subscriber:8081/accepted/' + topic, 'hub.topic': sta_root_url + '/' + topic };
+            params = { 'hub.mode': 'subscribe', 'hub.callback': subscriber_base + '/accepted/' + topic, 'hub.topic': sta_root_url + '/' + topic };
             message = `subscribe and then unsubscribe to topic ${topic}`;
             // Subscribe for topic
             http_client.post(config.hub.url, headers, params, async (err, res) => {
@@ -252,7 +257,7 @@ describe('Subscribe / Unsubscribe Testing', () => {
                     const no = await db.numSubscriptions(topic);
                     if (no === 1) {
                         console.log("Unsubscribe starting");
-                        params = { 'hub.mode': 'unsubscribe', 'hub.callback': 'http://subscriber:8081/accepted/' + topic, 'hub.topic': sta_root_url + '/' + topic };
+                        params = { 'hub.mode': 'unsubscribe', 'hub.callback': subscriber_base + '/accepted/' + topic, 'hub.topic': sta_root_url + '/' + topic };
                         message = `unsubscribe to topic ${topic}`;
                         http_client.post(config.hub.url, headers, params, async (err, res) => {
                             try {
