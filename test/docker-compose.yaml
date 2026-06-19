@@ -92,8 +92,8 @@ services:
       - "HUB_STATS_INTERVAL_MS=1000"
       - "CALLBACK_ALLOW_INSECURE_HTTP=true"
       - "CALLBACK_ALLOW_PRIVATE_NETS=true"
-      - "HUB_OPS_TOKEN=test-ops-token"
-      - "HUB_SECRET_KEY=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+      - "HUB_OPS_TOKEN=${HUB_OPS_TOKEN:-test-ops-token}"
+      - "HUB_SECRET_KEY=${HUB_SECRET_KEY:-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef}"
     ports:
       - "${HUB_PORT:-4000}:${HUB_PORT:-4000}"
     depends_on:
