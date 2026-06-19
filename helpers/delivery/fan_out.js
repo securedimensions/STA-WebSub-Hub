@@ -17,7 +17,7 @@ const metrics = require("../metrics");
 const { config, log } = require("../../settings");
 
 async function deliverToSubscriber({ notificationId, topic, payload, subscription }) {
-    if (circuit.isOpen(subscription.callback)) {
+    if (await circuit.isOpen(subscription.callback)) {
         metrics.inc("postsSkippedCircuit");
         throw new Error(`circuit open for callback ${subscription.callback}`);
     }
@@ -33,7 +33,7 @@ async function deliverToSubscriber({ notificationId, topic, payload, subscriptio
                 const response = await httpClient.post(subscription.callback, payload, headers);
 
                 if (response.status >= 200 && response.status <= 299) {
-                    circuit.recordSuccess(subscription.callback);
+                    await circuit.recordSuccess(subscription.callback);
                     metrics.inc("postsSucceeded");
                     return;
                 }
@@ -43,7 +43,7 @@ async function deliverToSubscriber({ notificationId, topic, payload, subscriptio
                     await db.deleteSubscription(topic, subscription.callback);
                     await subscriptionCache.remove(topic, subscription.callback);
                     await maybeUnsubscribeTopic(topic);
-                    circuit.recordSuccess(subscription.callback);
+                    await circuit.recordSuccess(subscription.callback);
                     metrics.inc("postsSucceeded");
                     return;
                 }
@@ -51,20 +51,20 @@ async function deliverToSubscriber({ notificationId, topic, payload, subscriptio
                 // Treat 5xx and 429 as transient; other 4xx are permanent errors.
                 const transient = response.status >= 500 || response.status === 429;
                 if (!transient) {
-                    circuit.recordFailure(subscription.callback);
+                    await circuit.recordFailure(subscription.callback);
                     metrics.inc("postsFailed");
                     throw new Error(`delivery failed with status ${response.status}`);
                 }
 
                 if (attempt === config.delivery.maxAttempts) {
-                    circuit.recordFailure(subscription.callback);
+                    await circuit.recordFailure(subscription.callback);
                     metrics.inc("postsFailed");
                     throw new Error(`delivery failed after retries with status ${response.status}`);
                 }
             } catch (e) {
                 // Network errors / timeouts are transient, retry up to maxAttempts
                 if (attempt === config.delivery.maxAttempts) {
-                    circuit.recordFailure(subscription.callback);
+                    await circuit.recordFailure(subscription.callback);
                     metrics.inc("postsFailed");
                     throw e;
                 }

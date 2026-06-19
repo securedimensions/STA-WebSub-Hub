@@ -37,9 +37,10 @@ async function main() {
             checks: { worker: true },
         }),
         getMetrics: async () => {
-            const [globalThroughput, queue] = await Promise.all([
+            const [globalThroughput, queue, circuitsOpen] = await Promise.all([
                 throughput.getGlobalSnapshot(),
                 getQueueStats(),
+                circuit.getOpenCircuits(),
             ]);
             return {
                 role: "delivery",
@@ -50,7 +51,7 @@ async function main() {
                     local: throughput.getLocalSnapshot(),
                 },
                 delivery: getWorkerStats(),
-                circuitsOpen: circuit.getOpenCircuits(),
+                circuitsOpen,
             };
         },
     });
