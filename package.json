@@ -10,7 +10,7 @@
     "start:all": "HUB_MODE=all node ./server.js",
     "publisher": "nodemon ./test/helpers/publisher.js localhost 8180",
     "subscriber": "nodemon ./test/helpers/subscriber.js localhost 8181",
-    "test": "mocha --exit --debug --timeout 10000 test",
+    "test": "HUB_OPS_TOKEN=test-ops-token HUB_SECRET_KEY=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef mocha --exit --debug --timeout 10000 test",
     "burst": "node ./test/helpers/burst_trigger.js --topic ABC --rate 1000 --seconds 5",
     "burst:sub": "node ./test/helpers/subscribe_trigger.js --topic ABC-UNSUB",
     "burst:run": "npm run burst:sub && node ./test/helpers/burst_trigger.js --topic ABC-UNSUB --rate 1000 --seconds 5",
