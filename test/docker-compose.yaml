@@ -81,9 +81,9 @@ services:
       - "POSTGRES_USER=websub"
       - "POSTGRES_PASSWORD=changeme"
       - "POSTGRES_DB=websub"
-      - "HUB_PORT=4000"
+      - "HUB_PORT=${HUB_PORT:-4000}"
       - "HUB_LOG_LEVEL=DEBUG"
-      - "HUB_URL=http://localhost:4000/api/subscriptions"
+      - "HUB_URL=http://localhost:${HUB_PORT:-4000}/api/subscriptions"
       - "STA_ROOT_URL=http://publisher/"
       - "STA_MQTT_URL=mqtt://broker:1883"
       - "PUBLISHER_URL=http://publisher:8181"
@@ -95,7 +95,7 @@ services:
       - "HUB_OPS_TOKEN=test-ops-token"
       - "HUB_SECRET_KEY=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
     ports:
-      - "4000:4000"
+      - "${HUB_PORT:-4000}:${HUB_PORT:-4000}"
     depends_on:
       broker:
         condition: service_started
