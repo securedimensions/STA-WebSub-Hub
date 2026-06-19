@@ -29,12 +29,22 @@ const parseHttpHeader = require('parse-http-header');
 const path = require('path');
 const favicon = require('serve-favicon');
 
+const rateLimit = require('express-rate-limit');
 const subscriptions = require('./routes/subscriptions');
 const ops = require('./routes/ops');
 const metrics = require('./helpers/metrics');
 const { config, log } = require('./settings');
+const { requireOpsToken } = require('./helpers/security/ops_auth');
 
 metrics.setRole('api');
+
+const subscriptionLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: 'Too many subscription requests, please try again later'
+});
 
 const app = express();
 app.use(function (req, res, next) {
@@ -44,7 +54,7 @@ app.use(function (req, res, next) {
   }
 
   if (req.method === 'POST') {
-    if (!req.header('content-type') === undefined) {
+    if (req.header('content-type') === undefined) {
       log.error("request has no content-type header");
       return res.status(415).contentType('text').send('content type header missing');
     }
@@ -80,8 +90,9 @@ app.use(express.urlencoded({ extended: true, limit: config.max_request_size }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 // WebSub API
+app.use('/api/subscriptions', subscriptionLimiter);
 app.use('/api', subscriptions);
-app.use('/ops', ops);
+app.use('/ops', requireOpsToken, ops);
 
 // catch 404 and forward to error handler
 app.use(function (req, res, next) {
@@ -92,14 +103,12 @@ app.use(function (req, res, next) {
 
 // error handler
 app.use(function (err, req, res, next) {
-  // set locals, only providing error in development
-  res.locals.message = err.message;
-  res.locals.error = req.app.get('env') === 'development' ? err : {};
-
   log.error(err);
-
-  // render the error page
-  res.status(err.status || 500).send(err);
+  const isDev = req.app.get('env') === 'development';
+  const body = isDev
+    ? { error: err.message, stack: err.stack }
+    : { error: 'Internal Server Error' };
+  res.status(err.status || 500).json(body);
 });
 
 module.exports = app;

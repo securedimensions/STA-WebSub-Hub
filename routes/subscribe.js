@@ -238,7 +238,7 @@ let subscribe = async function (
                 phase: "intent",
                 reason: error.message || String(error),
             });
-            if (typeof error.errors === 'array') {
+            if (Array.isArray(error.errors)) {
                 error.errors.forEach(e => {
                     log.debug(e);
                 })

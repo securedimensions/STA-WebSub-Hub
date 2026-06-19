@@ -200,7 +200,7 @@ let activateSubscription = async function (callback) {
         await client.query('BEGIN')
         const sql_query = 'UPDATE subscriptions SET status = ($2) WHERE callback = $1';
         const sql_values = [callback, subscription_state.ACTIVE];
-        client.query(sql_query, sql_values);
+        await client.query(sql_query, sql_values);
         await client.query('COMMIT')
     } catch (e) {
         await client.query('ROLLBACK')
@@ -217,7 +217,7 @@ let deactivateSubscription = async function (callback) {
         await client.query('BEGIN')
         const sql_query = 'UPDATE subscriptions SET status = ($2) WHERE callback = $1';
         const sql_values = [callback, subscription_state.INACTIVE];
-        client.query(sql_query, sql_values);
+        await client.query(sql_query, sql_values);
         await client.query('COMMIT')
     } catch (e) {
         await client.query('ROLLBACK')
@@ -234,7 +234,7 @@ let disableSubscription = async function (callback) {
         await client.query('BEGIN')
         const sql_query = 'UPDATE subscriptions SET status = ($2) WHERE callback = $1';
         const sql_values = [callback, subscription_state.DISABLED];
-        client.query(sql_query, sql_values);
+        await client.query(sql_query, sql_values);
         await client.query('COMMIT')
     } catch (e) {
         await client.query('ROLLBACK')
@@ -253,7 +253,7 @@ let deleteSubscription = async function (topic, callback) {
         // topic is not enforced unique in the DB schema, so delete across all matching topic rows
         const sql_query = 'DELETE FROM subscriptions WHERE topic_id IN (SELECT id from topics WHERE topic = ANY($1::text[])) AND callback = $2';
         const sql_values = [topicKeys, callback];
-        client.query(sql_query, sql_values);
+        await client.query(sql_query, sql_values);
         await client.query('COMMIT')
     } catch (e) {
         await client.query('ROLLBACK')
