@@ -242,21 +242,40 @@ The deployment can be done via docker-compose from the `docker` directory. Produ
 So for example `docker-compose up -d` will start the WebSub Hub.
 
 ## Test
-The `test` directory contains a simple implementation of a WebSub Subscriber and Publisher. These services are started with an MQTT broker, Redis, and a Postgres database:
 
-````
-docker-compose up --build
-````
+The `test` directory contains a fully dockerised test suite. All services — hub (API, ingest, delivery), PostgreSQL, Redis, MQTT broker, publisher, and subscriber — run inside an isolated `WebSubHubTest` Docker network. No host port mappings are used.
 
-On the output, you will see the startup of the database, broker, publisher and subscriber. The test stack runs split hub services: `hub-api`, `hub-ingest`, and `hub-delivery`.
+### Running the tests
 
-The test is executed via npm:
+From the repository root:
 
-````
-npm test
-````
+```bash
+./test/run-tests.sh
+```
 
-The output from the test should show `15 passing (1s)`.
+This builds all images, starts all containers, waits for the hub API to become healthy, runs the Mocha test suite inside the `test-runner` container, and prints a clean summary at the end:
+
+```
+============================================================
+  TEST SUMMARY
+============================================================
+
+  lease_sweep
+    ✔ lists registry topics whose lease TTL has expired (1103ms)
+    ✔ does not list topics with a live lease
+  ...
+  37 passing (11s)
+  1 pending
+============================================================
+```
+
+The exit code of `run-tests.sh` matches the test runner exit code, so it integrates directly with CI.
+
+To pass additional `docker compose up` flags (e.g. skip rebuilding images):
+
+```bash
+./test/run-tests.sh --no-build
+```
 
 ### Load / burst testing
 Subscribe to a topic and fire a burst of MQTT events via the test publisher:
