@@ -78,7 +78,7 @@ services:
       - WebSubHubTest
     environment:
       - "SUBSCRIBER_PORT=8081"
-      - "SUBSCRIBER_LOG_LEVEL=DEBUG"
+      - "SUBSCRIBER_LOG_LEVEL=INFO"
     expose:
       - "8081"
 
