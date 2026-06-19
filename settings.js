@@ -51,7 +51,13 @@ module.exports = {
             "database": process.env.POSTGRES_DB || "websub",
             "port": process.env.POSTGRES_PORT || 5432,
             "user": process.env.POSTGRES_USER || "websub",
-            "password": process.env.POSTGRES_PASSWORD || "changeme"
+            "password": (() => {
+                const pw = process.env.POSTGRES_PASSWORD;
+                if (!pw && process.env.NODE_ENV === 'production') {
+                    throw new Error('POSTGRES_PASSWORD must be set in production');
+                }
+                return pw || "changeme";
+            })()
         },
 	"publisher": {
 	    "url": process.env.PUBLISHER_URL || process.env.STA_ROOT_URL
