@@ -31,8 +31,6 @@ services:
     restart: no
     networks:
       - WebSubHubTest
-    environment:
-      - MQTT_PORT=1883
     expose:
       - "1883"
     volumes:
@@ -62,7 +60,7 @@ services:
     environment:
       - "PUBLISHER_PORT=8181"
       - "PUBLISHER_LOG_LEVEL=DEBUG"
-      - "HUB_URL=http://hub-api-test:${HUB_PORT:-4000}/api/subscriptions"
+      - "HUB_URL=http://hub-api-test:4000/api/subscriptions"
       - "STA_ROOT_URL=http://publisher-test"
       - "STA_MQTT_URL=mqtt://broker-test:1883"
     expose:
@@ -97,9 +95,9 @@ services:
       - "POSTGRES_USER=websub"
       - "POSTGRES_PASSWORD=changeme"
       - "POSTGRES_DB=websub"
-      - "HUB_PORT=${HUB_PORT:-4000}"
+      - "HUB_PORT=4000"
       - "HUB_LOG_LEVEL=INFO"
-      - "HUB_URL=http://hub-api-test:${HUB_PORT:-4000}/api/subscriptions"
+      - "HUB_URL=http://hub-api-test:4000/api/subscriptions"
       - "STA_ROOT_URL=http://publisher-test/"
       - "STA_MQTT_URL=mqtt://broker-test:1883"
       - "PUBLISHER_URL=http://publisher-test:8181"
@@ -108,10 +106,10 @@ services:
       - "HUB_STATS_INTERVAL_MS=0"
       - "CALLBACK_ALLOW_INSECURE_HTTP=true"
       - "CALLBACK_ALLOW_PRIVATE_NETS=true"
-      - "HUB_OPS_TOKEN=${HUB_OPS_TOKEN:-test-ops-token}"
-      - "HUB_SECRET_KEY=${HUB_SECRET_KEY:-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef}"
+      - "HUB_OPS_TOKEN=test-ops-token"
+      - "HUB_SECRET_KEY=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
     expose:
-      - "${HUB_PORT:-4000}"
+      - "4000"
     depends_on:
       broker-test:
         condition: service_started
@@ -131,9 +129,9 @@ services:
             const h = require('http');
             h.get({
               hostname: 'localhost',
-              port: process.env.HUB_PORT || 4000,
+              port: 4000,
               path: '/ops/health',
-              headers: { 'x-ops-token': process.env.HUB_OPS_TOKEN || '' }
+              headers: { 'x-ops-token': 'test-ops-token' }
             }, r => process.exit(r.statusCode === 200 ? 0 : 1))
              .on('error', () => process.exit(1));
           "
@@ -210,12 +208,12 @@ services:
       - "POSTGRES_USER=websub"
       - "POSTGRES_PASSWORD=changeme"
       - "POSTGRES_DB=websub"
-      - "HUB_PORT=${HUB_PORT:-4000}"
-      - "HUB_URL=http://hub-api-test:${HUB_PORT:-4000}/api/subscriptions"
+      - "HUB_PORT=4000"
+      - "HUB_URL=http://hub-api-test:4000/api/subscriptions"
       - "STA_ROOT_URL=http://publisher-test/"
       - "REDIS_URL=redis://redis-test:6379"
-      - "HUB_OPS_TOKEN=${HUB_OPS_TOKEN:-test-ops-token}"
-      - "HUB_SECRET_KEY=${HUB_SECRET_KEY:-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef}"
+      - "HUB_OPS_TOKEN=test-ops-token"
+      - "HUB_SECRET_KEY=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
       - "SUBSCRIBER_URL=http://subscriber-test:8081"
     depends_on:
       hub-api-test:
