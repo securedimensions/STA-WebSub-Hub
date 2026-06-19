@@ -3,75 +3,76 @@ services:
     image: postgres:14.2
     restart: no
     environment:
-      - "POSTGRES_HOST=db"
-      - "POSTGRES_PORT=5432"
       - "POSTGRES_USER=websub"
       - "POSTGRES_PASSWORD=changeme"
       - "POSTGRES_DB=websub"
     expose:
       - "5432"
     ports:
-      - "5432:5432"
+      # Mapped to a non-default host port to avoid clashing with a local postgres.
+      # Override POSTGRES_PORT_HOST in test/.env to change the host-side port.
+      - "${POSTGRES_PORT_HOST:-15432}:5432"
     volumes:
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
       - postgres_data:/var/lib/postgresql/data/
     healthcheck:
-      test: ["CMD-SHELL", "sh -c 'pg_isready -h db -p 5432 -U websub -d websub'"]
+      test: ["CMD-SHELL", "pg_isready -h localhost -p 5432 -U websub -d websub"]
       interval: 5s
       timeout: 3s
       retries: 3
+
   broker:
     image: eclipse-mosquitto
     environment:
       - MQTT_PORT=1883
     expose:
       - "1883"
-    ports:
-      - "1883:1883"
     volumes:
       - ./config:/mosquitto/config:rw
     restart: no
+
   redis:
     image: redis:7-alpine
     restart: no
     command: redis-server --maxmemory 256mb --maxmemory-policy noeviction
     expose:
       - "6379"
-    ports:
-      - "6379:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 3s
       retries: 3
+
   publisher:
-    build: 
+    build:
       context: ../test/publisher
       dockerfile: Dockerfile
     restart: no
     environment:
       - "PUBLISHER_PORT=8181"
       - "PUBLISHER_LOG_LEVEL=DEBUG"
-      - "HUB_URL=http://localhost:4000/api/subscriptions"
+      - "HUB_URL=http://hub-api:${HUB_PORT:-4000}/api/subscriptions"
       - "STA_ROOT_URL=http://publisher"
       - "STA_MQTT_URL=mqtt://broker:1883"
-    ports:
-      - "8181:8181"
+    expose:
+      - "8181"
     depends_on:
       broker:
         condition: service_started
+
   subscriber:
-    build: 
+    build:
       context: ../test/subscriber
       dockerfile: Dockerfile
     restart: no
     environment:
       - "SUBSCRIBER_PORT=8081"
       - "SUBSCRIBER_LOG_LEVEL=DEBUG"
-    ports:
-      - "8081:8081"
+    expose:
+      - "8081"
+
   hub-api:
-    build: 
+    build:
       context: ..
       dockerfile: Dockerfile
     restart: no
@@ -83,7 +84,7 @@ services:
       - "POSTGRES_DB=websub"
       - "HUB_PORT=${HUB_PORT:-4000}"
       - "HUB_LOG_LEVEL=DEBUG"
-      - "HUB_URL=http://localhost:${HUB_PORT:-4000}/api/subscriptions"
+      - "HUB_URL=http://hub-api:${HUB_PORT:-4000}/api/subscriptions"
       - "STA_ROOT_URL=http://publisher/"
       - "STA_MQTT_URL=mqtt://broker:1883"
       - "PUBLISHER_URL=http://publisher:8181"
@@ -107,8 +108,9 @@ services:
         condition: service_started
       db:
         condition: service_healthy
+
   hub-ingest:
-    build: 
+    build:
       context: ..
       dockerfile: Dockerfile
     restart: no
@@ -132,8 +134,9 @@ services:
         condition: service_healthy
       db:
         condition: service_healthy
+
   hub-delivery:
-    build: 
+    build:
       context: ..
       dockerfile: Dockerfile
     restart: no
@@ -157,5 +160,6 @@ services:
         condition: service_healthy
       db:
         condition: service_healthy
+
 volumes:
   postgres_data:
