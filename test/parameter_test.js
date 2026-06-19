@@ -43,7 +43,7 @@ const parameters = [
     [{ 'hub.mode': 'subscribe', 'hub.topic': 'topic' }, 400, 'missing mandatory parameter `hub.callback`'],
     [{ 'hub.mode': 'subscribe', 'hub.callback': 'http://foobar', 'hub.topic': bad_publisher_url + '/ABC' }, 400, 'publisher not supported'],
     [{ 'hub.mode': 'subscribe', 'hub.callback': 'http://foobar/' + "x".repeat(config.max_url_size), 'hub.topic': bad_publisher_url + '/ABC' }, 413, 'URL size exceeded'],
-    [{ 'hub.mode': 'subscribe', 'hub.callback': 'http://foobar/', 'hub.topic': sta_root_url + '/' + "x".repeat(config.max_topic_size) }, 413, 'Topic size exceeded']
+    [{ 'hub.mode': 'subscribe', 'hub.callback': subscriber_base + '/size-test', 'hub.topic': sta_root_url + '/' + "x".repeat(config.max_topic_size) }, 413, 'Topic size exceeded']
 ]
 
 describe('Subscription Parameter Failure Testing', () => {
