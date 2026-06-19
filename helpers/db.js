@@ -32,6 +32,7 @@ const {
     topicDbLookupKeys,
     topicFromDb,
 } = require('./topic_key');
+const { encryptSecret, decryptSecret } = require('./security/secret_crypto');
 
 const subscription_state = Object.freeze({
     ACTIVE: "active",
@@ -61,7 +62,7 @@ let loadAllSubscriptions = async function () {
           AND (s.duration IS NULL OR s.duration >= $2)`;
     const now = Math.round(Date.now() / 1000);
     const result = await pool.query(sql_query, [subscription_state.DISABLED, now]);
-    return result.rows;
+    return result.rows.map(row => ({ ...row, secret: decryptSecret(row.secret) }));
 }
 
 let getTopics = async function () {
@@ -115,12 +116,13 @@ let getSubscriptions = async function (topic) {
         return [];
     }
 
-    return result.rows;
+    return result.rows.map(row => ({ ...row, secret: decryptSecret(row.secret) }));
 }
 
 let insertSubscription = async function (topic_url, topic, callback, lease_seconds, secret) {
     topic_url = querystring.escape(topic_url);
     topic = escapeTopicForDb(topic);
+    secret = encryptSecret(secret);
     const client = await pool.connect()
 
     try {
@@ -174,6 +176,7 @@ let insertSubscription = async function (topic_url, topic, callback, lease_secon
 }
 
 let updateSubscription = async function (topic_id, callback, lease_seconds, secret) {
+    secret = encryptSecret(secret);
     const client = await pool.connect()
 
     try {

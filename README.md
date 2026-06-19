@@ -81,6 +81,8 @@ Some environment variables control the basic behavior of the Hub by overwriting 
 * **DELIVERY_CIRCUIT_WINDOW_MS**: Sliding window for circuit failures. Default: `60000`
 * **DELIVERY_CIRCUIT_OPEN_MS**: How long a circuit stays open. Default: `30000`
 * **HUB_OPS_TOKEN**: Secret token required to access all `/ops` endpoints on the API role. Pass it as the `x-ops-token` request header or `?token=` query parameter. When unset, all `/ops` endpoints return `503`. **Must be set in production** — generate with e.g. `openssl rand -hex 32`.
+* **HUB_SECRET_KEY**: 64-character hex key (32 bytes) used for AES-256-GCM encryption of `hub.secret` values at rest in PostgreSQL. When set, new and renewed subscriptions have their secret encrypted before writing; secrets are transparently decrypted on read. Existing plaintext rows continue to work without a migration. When unset in production, a warning is logged and secrets are stored in plaintext. Generate with `openssl rand -hex 32`.
+* **POSTGRES_PASSWORD**: Password for the PostgreSQL database user. **Required in production** — the process will refuse to start if this is unset when `NODE_ENV=production`.
 * **HUB_STATS_INTERVAL_MS**: Log queue/delivery counters every N ms (0 = disabled)
 * **HUB_OPS_PORT**: HTTP port for ingest/delivery health and metrics (`GET /health`, `GET /metrics`). Disabled when unset or `0`. In Docker this is set per container from `HUB_INGEST_OPS_PORT` / `HUB_DELIVERY_OPS_PORT`.
 * **HUB_INGEST_OPS_PORT** / **HUB_DELIVERY_OPS_PORT**: Default ops ports for ingest (`4001`) and delivery (`4002`) in compose files
