@@ -1,7 +1,10 @@
 /*
  * Mocha root hook: load test environment variables before any test file runs.
- * Loads test/.env if it exists, otherwise falls back to test/.env.example,
- * so tests work out of the box without requiring a manual copy step.
+ *
+ * Inside the docker test-runner all env vars are injected by docker-compose,
+ * so dotenv is a no-op (it never overrides already-set variables).
+ * When running tests on the host directly, test/.env (or test/.env.example
+ * as fallback) is loaded so the same settings are available.
  */
 
 "use strict";
@@ -13,5 +16,8 @@ const dotenv = require("dotenv");
 const envFile = path.resolve(__dirname, ".env");
 const exampleFile = path.resolve(__dirname, ".env.example");
 
-const file = fs.existsSync(envFile) ? envFile : exampleFile;
-dotenv.config({ path: file });
+if (fs.existsSync(envFile)) {
+    dotenv.config({ path: envFile });
+} else if (fs.existsSync(exampleFile)) {
+    dotenv.config({ path: exampleFile });
+}

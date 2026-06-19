@@ -30,7 +30,10 @@ const { config } = require('../settings');
 const { pool } = require('../helpers/db');
 const db = require('../helpers/db');
 
-const HUB_BASE = `http://localhost:${config.hub.port}`;
+// Derive the hub base URL from HUB_URL so it works both on the host
+// (localhost) and inside the docker test-runner (hub-api container name).
+const hubUrl = new URL(config.hub.url);
+const HUB_BASE = `${hubUrl.protocol}//${hubUrl.host}`;
 const OPS_BASE = `${HUB_BASE}/ops`;
 const OPS_TOKEN = process.env.HUB_OPS_TOKEN || '';
 const STA_ROOT_URL = process.env.STA_ROOT_URL || config.sta.root_url;

@@ -1,17 +1,22 @@
+networks:
+  WebSubHubTest:
+    driver: bridge
+
+volumes:
+  postgres_data:
+
 services:
   db:
     image: postgres:14.2
     restart: no
+    networks:
+      - WebSubHubTest
     environment:
       - "POSTGRES_USER=websub"
       - "POSTGRES_PASSWORD=changeme"
       - "POSTGRES_DB=websub"
     expose:
       - "5432"
-    ports:
-      # Mapped to a non-default host port to avoid clashing with a local postgres.
-      # Override POSTGRES_PORT_HOST in test/.env to change the host-side port.
-      - "${POSTGRES_PORT_HOST:-15432}:5432"
     volumes:
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
       - postgres_data:/var/lib/postgresql/data/
@@ -23,17 +28,21 @@ services:
 
   broker:
     image: eclipse-mosquitto
+    restart: no
+    networks:
+      - WebSubHubTest
     environment:
       - MQTT_PORT=1883
     expose:
       - "1883"
     volumes:
       - ./config:/mosquitto/config:rw
-    restart: no
 
   redis:
     image: redis:7-alpine
     restart: no
+    networks:
+      - WebSubHubTest
     command: redis-server --maxmemory 256mb --maxmemory-policy noeviction
     expose:
       - "6379"
@@ -48,6 +57,8 @@ services:
       context: ../test/publisher
       dockerfile: Dockerfile
     restart: no
+    networks:
+      - WebSubHubTest
     environment:
       - "PUBLISHER_PORT=8181"
       - "PUBLISHER_LOG_LEVEL=DEBUG"
@@ -65,6 +76,8 @@ services:
       context: ../test/subscriber
       dockerfile: Dockerfile
     restart: no
+    networks:
+      - WebSubHubTest
     environment:
       - "SUBSCRIBER_PORT=8081"
       - "SUBSCRIBER_LOG_LEVEL=DEBUG"
@@ -76,6 +89,8 @@ services:
       context: ..
       dockerfile: Dockerfile
     restart: no
+    networks:
+      - WebSubHubTest
     environment:
       - "POSTGRES_HOST=db"
       - "POSTGRES_PORT=5432"
@@ -83,20 +98,20 @@ services:
       - "POSTGRES_PASSWORD=changeme"
       - "POSTGRES_DB=websub"
       - "HUB_PORT=${HUB_PORT:-4000}"
-      - "HUB_LOG_LEVEL=DEBUG"
+      - "HUB_LOG_LEVEL=INFO"
       - "HUB_URL=http://hub-api:${HUB_PORT:-4000}/api/subscriptions"
       - "STA_ROOT_URL=http://publisher/"
       - "STA_MQTT_URL=mqtt://broker:1883"
       - "PUBLISHER_URL=http://publisher:8181"
       - "REDIS_URL=redis://redis:6379"
       - "HUB_MODE=api"
-      - "HUB_STATS_INTERVAL_MS=1000"
+      - "HUB_STATS_INTERVAL_MS=0"
       - "CALLBACK_ALLOW_INSECURE_HTTP=true"
       - "CALLBACK_ALLOW_PRIVATE_NETS=true"
       - "HUB_OPS_TOKEN=${HUB_OPS_TOKEN:-test-ops-token}"
       - "HUB_SECRET_KEY=${HUB_SECRET_KEY:-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef}"
-    ports:
-      - "${HUB_PORT:-4000}:${HUB_PORT:-4000}"
+    expose:
+      - "${HUB_PORT:-4000}"
     depends_on:
       broker:
         condition: service_started
@@ -108,25 +123,44 @@ services:
         condition: service_started
       db:
         condition: service_healthy
+    healthcheck:
+      test:
+        - "CMD-SHELL"
+        - >
+          node -e "
+            const h = require('http');
+            h.get({
+              hostname: 'localhost',
+              port: process.env.HUB_PORT || 4000,
+              path: '/ops/health',
+              headers: { 'x-ops-token': process.env.HUB_OPS_TOKEN || '' }
+            }, r => process.exit(r.statusCode === 200 ? 0 : 1))
+             .on('error', () => process.exit(1));
+          "
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
 
   hub-ingest:
     build:
       context: ..
       dockerfile: Dockerfile
     restart: no
+    networks:
+      - WebSubHubTest
     environment:
       - "POSTGRES_HOST=db"
       - "POSTGRES_PORT=5432"
       - "POSTGRES_USER=websub"
       - "POSTGRES_PASSWORD=changeme"
       - "POSTGRES_DB=websub"
-      - "HUB_LOG_LEVEL=DEBUG"
+      - "HUB_LOG_LEVEL=INFO"
       - "STA_ROOT_URL=http://publisher/"
       - "STA_MQTT_URL=mqtt://broker:1883"
       - "REDIS_URL=redis://redis:6379"
       - "HUB_MODE=ingest"
-      - "HUB_STATS_INTERVAL_MS=1000"
-      - "HUB_OPS_PORT=4001"
+      - "HUB_STATS_INTERVAL_MS=0"
     depends_on:
       broker:
         condition: service_started
@@ -140,19 +174,20 @@ services:
       context: ..
       dockerfile: Dockerfile
     restart: no
+    networks:
+      - WebSubHubTest
     environment:
       - "POSTGRES_HOST=db"
       - "POSTGRES_PORT=5432"
       - "POSTGRES_USER=websub"
       - "POSTGRES_PASSWORD=changeme"
       - "POSTGRES_DB=websub"
-      - "HUB_LOG_LEVEL=DEBUG"
+      - "HUB_LOG_LEVEL=INFO"
       - "STA_ROOT_URL=http://publisher/"
       - "STA_MQTT_URL=mqtt://broker:1883"
       - "REDIS_URL=redis://redis:6379"
       - "HUB_MODE=delivery"
-      - "HUB_STATS_INTERVAL_MS=1000"
-      - "HUB_OPS_PORT=4002"
+      - "HUB_STATS_INTERVAL_MS=0"
       - "CALLBACK_ALLOW_INSECURE_HTTP=true"
       - "CALLBACK_ALLOW_PRIVATE_NETS=true"
     depends_on:
@@ -161,5 +196,30 @@ services:
       db:
         condition: service_healthy
 
-volumes:
-  postgres_data:
+  test-runner:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    command: ["npm", "test"]
+    restart: no
+    networks:
+      - WebSubHubTest
+    environment:
+      - "POSTGRES_HOST=db"
+      - "POSTGRES_PORT=5432"
+      - "POSTGRES_USER=websub"
+      - "POSTGRES_PASSWORD=changeme"
+      - "POSTGRES_DB=websub"
+      - "HUB_PORT=${HUB_PORT:-4000}"
+      - "HUB_URL=http://hub-api:${HUB_PORT:-4000}/api/subscriptions"
+      - "STA_ROOT_URL=http://publisher/"
+      - "REDIS_URL=redis://redis:6379"
+      - "HUB_OPS_TOKEN=${HUB_OPS_TOKEN:-test-ops-token}"
+      - "HUB_SECRET_KEY=${HUB_SECRET_KEY:-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef}"
+    depends_on:
+      hub-api:
+        condition: service_healthy
+      hub-ingest:
+        condition: service_started
+      hub-delivery:
+        condition: service_started
