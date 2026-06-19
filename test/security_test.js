@@ -36,7 +36,7 @@ const hubUrl = new URL(config.hub.url);
 const HUB_BASE = `${hubUrl.protocol}//${hubUrl.host}`;
 const OPS_BASE = `${HUB_BASE}/ops`;
 const OPS_TOKEN = process.env.HUB_OPS_TOKEN || '';
-const STA_ROOT_URL = process.env.STA_ROOT_URL || config.sta.root_url;
+const STA_ROOT_URL = (process.env.STA_ROOT_URL || config.sta.root_url).replace(/\/$/, '');
 const SUBSCRIBER_BASE = process.env.SUBSCRIBER_URL || 'http://subscriber:8081';
 
 // ---------------------------------------------------------------------------
