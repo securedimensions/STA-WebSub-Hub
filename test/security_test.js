@@ -37,6 +37,7 @@ const HUB_BASE = `${hubUrl.protocol}//${hubUrl.host}`;
 const OPS_BASE = `${HUB_BASE}/ops`;
 const OPS_TOKEN = process.env.HUB_OPS_TOKEN || '';
 const STA_ROOT_URL = process.env.STA_ROOT_URL || config.sta.root_url;
+const SUBSCRIBER_BASE = process.env.SUBSCRIBER_URL || 'http://subscriber:8081';
 
 // ---------------------------------------------------------------------------
 // V-01 — OPS endpoint authentication
@@ -114,50 +115,13 @@ describe('V-01 — OPS endpoint authentication', () => {
 });
 
 // ---------------------------------------------------------------------------
-// V-04 — Rate limiting on subscription endpoint
-// ---------------------------------------------------------------------------
-
-describe('V-04 — Rate limiting on subscription endpoint', function () {
-    // This test sends 65 rapid requests; the 61st onward should be rejected.
-    this.timeout(30000);
-
-    it('POST /api/subscriptions → 429 after exceeding 60 requests/min', function (done) {
-        const url = config.hub.url;
-        const headers = { 'content-type': 'application/x-www-form-urlencoded' };
-        // Deliberately malformed body (returns 400 fast, no side-effects)
-        const body = { 'hub.mode': 'subscribe' };
-
-        let completed = 0;
-        let got429 = false;
-        const TOTAL = 65;
-
-        function onResponse(err, res) {
-            completed++;
-            if (res && res.statusCode === 429) {
-                got429 = true;
-            }
-            if (completed === TOTAL) {
-                try {
-                    assert.ok(got429, 'expected at least one 429 after exceeding rate limit');
-                    done();
-                } catch (e) { done(e); }
-            }
-        }
-
-        for (let i = 0; i < TOTAL; i++) {
-            http_client.post(url, headers, body, onResponse);
-        }
-    });
-});
-
-// ---------------------------------------------------------------------------
 // V-08 — hub.secret encrypted at rest in PostgreSQL
 // ---------------------------------------------------------------------------
 
 describe('V-08 — hub.secret encrypted at rest', () => {
     const topic = 'security-secret-test';
     const secret = 'super-secret-value';
-    const callback = `http://subscriber:8081/accepted/${topic}`;
+    const callback = `${SUBSCRIBER_BASE}/accepted/${topic}`;
 
     before('clear subscriptions', async function () {
         await db.clearAll();
@@ -326,5 +290,42 @@ describe('V-11 — Security HTTP response headers', () => {
                 done();
             } catch (e) { done(e); }
         });
+    });
+});
+
+// ---------------------------------------------------------------------------
+// V-04 — Rate limiting on subscription endpoint (run last — exhausts rate window)
+// ---------------------------------------------------------------------------
+
+describe('V-04 — Rate limiting on subscription endpoint', function () {
+    // This test sends 65 rapid requests; the 61st onward should be rejected.
+    this.timeout(30000);
+
+    it('POST /api/subscriptions → 429 after exceeding 60 requests/min', function (done) {
+        const url = config.hub.url;
+        const headers = { 'content-type': 'application/x-www-form-urlencoded' };
+        // Deliberately malformed body (returns 400 fast, no side-effects)
+        const body = { 'hub.mode': 'subscribe' };
+
+        let completed = 0;
+        let got429 = false;
+        const TOTAL = 65;
+
+        function onResponse(err, res) {
+            completed++;
+            if (res && res.statusCode === 429) {
+                got429 = true;
+            }
+            if (completed === TOTAL) {
+                try {
+                    assert.ok(got429, 'expected at least one 429 after exceeding rate limit');
+                    done();
+                } catch (e) { done(e); }
+            }
+        }
+
+        for (let i = 0; i < TOTAL; i++) {
+            http_client.post(url, headers, body, onResponse);
+        }
     });
 });
